@@ -36,8 +36,9 @@ collector instead of Loki's OTLP endpoint), `--dry-run` (write `out/` only).
   "now"), so the script writes cumulative counter samples as OpenMetrics text and imports them with
   `promtool tsdb create-blocks-from openmetrics` into the `prometheus-data` volume, then evaluates
   `local/prometheus-rules.yml` over the window with `promtool tsdb create-blocks-from rules`
-  (every 10 min by default, `--rules-eval-interval`; live evaluation is 1 min, so the most recent
-  hour mixes both resolutions — fine for trends, don't `sum_over_time` the `increase1h` rule).
+  (every 4 min by default, `--rules-eval-interval` — must stay under Prometheus' 5 min lookback or
+  rule-based panels show gaps; live evaluation is 1 min, so the most recent hour mixes both
+  resolutions — fine for trends, don't `sum_over_time` the `increase1h` rule).
   Label sets mirror real post-collector series exactly, plus `collector_env="demo"`.
   Prometheus' TSDB lives at `/prometheus/data` inside the volume (the compose `command:` override
   drops the image's `--storage.tsdb.path`, so the default relative `data/` applies); the script

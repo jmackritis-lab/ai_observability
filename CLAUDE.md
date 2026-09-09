@@ -111,7 +111,8 @@ To point Claude Code at the local stack: merge the `env` block from
   and the Helm `grafana.datasources` — dashboard JSON references these UIDs, so don't rename them or
   dashboards break in one environment.
 - **Dashboards are organized by scope subdirectory → Grafana folder**: `claude-code/` (Claude Code
-  usage) and `operational/` (collector health). Locally each subdir is a provisioning provider
+  usage), `executive/` (leadership one-pager), `governance/` (security + attribution health) and
+  `operational/` (collector health). Locally each subdir is a provisioning provider
   (`local/grafana/provisioning/dashboards/dashboards.yaml`); in Helm the subdir name maps to a folder
   via `dashboards.folders` + the sidecar `grafana_folder` annotation. Add a new scope in both places.
 - **The Helm bundle is deliberately isolated**: its Prometheus scrapes exactly two static targets —

@@ -1,0 +1,685 @@
+{
+  "title": "Claude Code — Attribution Health",
+  "uid": "claude-code-attribution",
+  "tags": [
+    "claude-code",
+    "otel",
+    "governance",
+    "attribution"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "title": "Executive Summary",
+      "type": "link",
+      "url": "/d/claude-code-executive",
+      "icon": "dashboard",
+      "keepTime": true,
+      "includeVars": true
+    },
+    {
+      "title": "Governance & Security",
+      "type": "link",
+      "url": "/d/claude-code-governance",
+      "icon": "dashboard",
+      "keepTime": true,
+      "includeVars": true
+    },
+    {
+      "title": "Usage Audit",
+      "type": "link",
+      "url": "/d/claude-code-audit",
+      "icon": "dashboard",
+      "keepTime": true,
+      "includeVars": true
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "organization_id",
+        "label": "Organization",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(claude_code_cost_usage_USD_total, organization_id)",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2
+      },
+      {
+        "name": "project",
+        "label": "Project",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\"}, project)",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2
+      },
+      {
+        "name": "user_email",
+        "label": "Engineer",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\"}, user_email)",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Attributed spend (has project tag)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "green",
+                "value": 95
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "100 * (1 - (sum(increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\", project=\"unattributed\"}[$__range])) or vector(0)) / sum(increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\"}[$__range])))",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Target: 100%. Falls when sessions start without OTEL_RESOURCE_ATTRIBUTES (no launcher / no managed settings)."
+    },
+    {
+      "type": "stat",
+      "title": "Unattributed spend (range)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 25
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "(sum(increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\", project=\"unattributed\"}[$__range])) or vector(0))",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Spend the collector stamped `project=\"unattributed\"` because no project attribute arrived."
+    },
+    {
+      "type": "stat",
+      "title": "Invalid Jira key spend (range)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.01
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "(sum(increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\", jira_story=\"invalid\"}[$__range])) or vector(0)) + (sum(increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\", jira_epic=\"invalid\", jira_story!=\"invalid\"}[$__range])) or vector(0))",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Spend where jira.epic or jira.story failed validation (^[A-Z][A-Z0-9]*-[0-9]+$) and was replaced with `invalid` by the collector."
+    },
+    {
+      "type": "stat",
+      "title": "Untagged sessions (range)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "count(present_over_time(claude_code_session_count_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\", project=\"unattributed\"}[$__range])) or vector(0)",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Share of spend by attribution quality (1-day rolling)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 40
+          },
+          "max": 1,
+          "min": 0
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\", project=\"unattributed\"}[1d])) / sum(rate(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\"}[1d]))",
+          "legendFormat": "unattributed (no project)",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\", project!=\"unattributed\", jira_story=\"invalid\"}[1d])) / sum(rate(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\"}[1d]))",
+          "legendFormat": "invalid Jira key",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\", jira_story=\"none\"}[1d])) / sum(rate(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\"}[1d]))",
+          "legendFormat": "no story (exploratory, `none`)",
+          "refId": "C"
+        }
+      ],
+      "description": "Disjoint categories, stacked. Everything not shown is fully attributed to project + epic + story. The recording rule claude_code:cost_usd_unattributed:ratio_rate5m carries the instantaneous version for alerting."
+    },
+    {
+      "type": "bargauge",
+      "title": "Story-level coverage by project (range)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.8
+              },
+              {
+                "color": "green",
+                "value": 0.95
+              }
+            ]
+          },
+          "max": 1,
+          "min": 0
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "valueMode": "color"
+      },
+      "targets": [
+        {
+          "expr": "1 - (sum by (project) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\", jira_story=~\"none|invalid|unattributed\"}[$__range])) or (sum by (project) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\"}[$__range])) * 0)) / sum by (project) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\"}[$__range]))",
+          "legendFormat": "{{project}}",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "Share of each project's spend that maps to a real Jira story (not none / invalid / unattributed)."
+    },
+    {
+      "type": "table",
+      "title": "Who launches untagged sessions (range)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unattributed spend"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "sum by (user_email) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\", project=\"unattributed\"}[$__range]))",
+          "refId": "A",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "expr": "count by (user_email) (present_over_time(claude_code_session_count_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\", project=\"unattributed\"}[$__range]))",
+          "refId": "B",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "user_email": "Engineer",
+              "Value #A": "Unattributed spend",
+              "Value #B": "Sessions"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Unattributed spend",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "description": "Fix = install client/claude-attr (launcher) or push client/managed-settings.json. This is a rollout gap, not a performance table."
+    },
+    {
+      "type": "table",
+      "title": "Sessions with malformed Jira keys (range)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "count by (user_email, project, jira_epic, jira_story) (present_over_time(claude_code_session_count_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\", jira_story=\"invalid\"}[$__range]) or present_over_time(claude_code_session_count_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\", jira_epic=\"invalid\"}[$__range]))",
+          "refId": "A",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "user_email": "Engineer",
+              "project": "Project",
+              "jira_epic": "Epic",
+              "jira_story": "Story",
+              "Value #A": "Sessions"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Sessions",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "description": "The collector replaces the malformed value with `invalid`, so the original typo is not retained — check the launcher's derivation (branch name / git config claude.jiraEpic) for that engineer."
+    },
+    {
+      "type": "table",
+      "title": "Exploratory work without a story (`none`) by project & engineer (range)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 21
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Spend"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "sum by (project, user_email) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", user_email=~\"$user_email\", jira_story=\"none\"}[$__range]))",
+          "refId": "A",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "project": "Project",
+              "user_email": "Engineer",
+              "Value #A": "Spend"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Spend",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "description": "`none` is the *deliberate* sentinel for work that has no ticket. Legitimate, but worth watching if it dominates a project."
+    },
+    {
+      "type": "logs",
+      "title": "Recent prompts in untagged sessions (metadata only)",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 21
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": false,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "enableLogDetails": true
+      },
+      "targets": [
+        {
+          "expr": "{service_name=\"claude-code\"} | project=\"unattributed\" |= \"claude_code.user_prompt\"",
+          "refId": "A"
+        }
+      ],
+      "description": "Prompt content stays redacted; the session_id / user_email fields identify who to follow up with."
+    },
+    {
+      "type": "text",
+      "title": "How attribution works and how to fix gaps",
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 29
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "| Value | Meaning | Who sets it |\n|---|---|---|\n| `EPMDEDP-123` | Real project / epic / story | Developer via `client/claude-attr.sh` (derived from git remote, branch, `git config claude.jiraEpic`) |\n| `none` | Dimension deliberately does not apply (exploratory work) | Developer / launcher |\n| `unattributed` | Attribute never arrived — session started without the launcher or managed settings | **Collector** (`transform/attribution`) |\n| `invalid` | Value failed validation (`^[A-Z][A-Z0-9]*-[0-9]+$` for Jira keys, `[a-z0-9._-]` for project) | **Collector** |\n\nEnforcement is server-side, so a developer cannot bypass it by editing local settings. Rollout fix for `unattributed`: push `client/managed-settings.json` via MDM and put the launcher on PATH."
+      }
+    }
+  ],
+  "description": "Rollout KPI for the attribution scheme: how much spend is tagged, who is untagged, and where Jira keys are malformed."
+}

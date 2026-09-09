@@ -560,7 +560,7 @@ def import_prometheus(om_path: str, data_dir: str):
     print("[prometheus] import done and server ready")
 
 
-def backfill_rules(start: datetime, end: datetime, data_dir: str, eval_interval: str = "10m"):
+def backfill_rules(start: datetime, end: datetime, data_dir: str, eval_interval: str = "4m"):
     """Evaluate local/prometheus-rules.yml over the seeded window so recording-rule series exist for the past too."""
     vol = find_volume("prometheus-data")
     host_dir = os.path.abspath(OUT_DIR)
@@ -686,7 +686,9 @@ def main():
     ap.add_argument("--skip-loki", action="store_true")
     ap.add_argument("--skip-rules", action="store_true", help="don't backfill recording-rule series")
     ap.add_argument("--rules-only", action="store_true", help="only (re)backfill recording rules over the last --days")
-    ap.add_argument("--rules-eval-interval", default="10m", help="evaluation step for the historical rule backfill (default 10m)")
+    ap.add_argument("--rules-eval-interval", default="4m",
+                    help="evaluation step for the historical rule backfill (default 4m: must stay under Prometheus' 5m "
+                         "lookback delta or rule-based panels show gaps in the backfilled range; ~1 min runtime per 14 days at 10m, ~5 min at 4m)")
     ap.add_argument("--via", choices=["loki", "collector"], default="loki", help="where to POST the OTLP logs (default: Loki directly)")
     ap.add_argument("--dry-run", action="store_true", help="generate files only, touch nothing")
     args = ap.parse_args()

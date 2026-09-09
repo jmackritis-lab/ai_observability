@@ -27,3 +27,12 @@ providers:
     allowUiUpdates: true
     options:
       path: /var/lib/grafana/dashboards/operational
+  - name: executive
+    orgId: 1
+    folder: Executive
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 15
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/executive
