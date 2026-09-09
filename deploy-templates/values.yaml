@@ -309,7 +309,138 @@ prometheus:
             - otel-collector:8888
   # Recording rules — session-free, low-cardinality series for long-range dashboards.
   # Source of truth: local/prometheus-rules.yml (keep byte-identical apart from indentation).
+  # Alerting rules — source of truth: local/prometheus-alerts.yml (keep identical apart from
+  # indentation; the Loki-candidate comment block is intentionally not mirrored). No Alertmanager is
+  # bundled: alerts surface in Prometheus' /alerts page and Grafana's Prometheus alert list until
+  # `alertmanager.enabled` / an external alerting.alertmanagers target is configured.
   serverFiles:
+    alerting_rules.yml:
+      groups:
+        - name: claude_code.finops
+          rules:
+            # A single engineer's last 24h spend is >3x their own trailing 7-day daily average AND above a
+            # dollar floor (so a quiet user going from $1 to $4 doesn't page anyone).
+            - alert: ClaudeCodeUserSpendSpike
+              expr: >
+                sum by (organization_id, user_email) (increase(claude_code_cost_usage_USD_total[1d])) > 25
+                and
+                sum by (organization_id, user_email) (increase(claude_code_cost_usage_USD_total[1d]))
+                  > 3 * (sum by (organization_id, user_email) (increase(claude_code_cost_usage_USD_total[7d] offset 1d)) / 7)
+              for: 30m
+              labels: {severity: warning, owner: finops}
+              annotations:
+                summary: "Claude Code spend spike for {{ $labels.user_email }}"
+                description: "{{ $labels.user_email }} spent ${{ $value | printf \"%.2f\" }} in the last 24h, >3x their trailing 7-day daily average."
+                runbook: "Open Usage Audit filtered to the user; check model/effort mix and subagent fan-out in Session Explorer."
+
+            # Same signal at project level — a runaway agent loop or a new team onboarding.
+            - alert: ClaudeCodeProjectSpendSpike
+              expr: >
+                sum by (organization_id, project) (increase(claude_code_cost_usage_USD_total[1d])) > 100
+                and
+                sum by (organization_id, project) (increase(claude_code_cost_usage_USD_total[1d]))
+                  > 2.5 * (sum by (organization_id, project) (increase(claude_code_cost_usage_USD_total[7d] offset 1d)) / 7)
+              for: 1h
+              labels: {severity: warning, owner: finops}
+              annotations:
+                summary: "Claude Code spend spike on project {{ $labels.project }}"
+                description: "Project {{ $labels.project }} spent ${{ $value | printf \"%.2f\" }} in the last 24h, >2.5x its trailing daily average."
+
+            # Prompt-cache efficiency collapsed for a project that is spending real money.
+            - alert: ClaudeCodeCacheHitRatioLow
+              expr: >
+                (
+                  sum by (organization_id, project) (increase(claude_code_token_usage_tokens_total{type="cacheRead"}[1d]))
+                  /
+                  sum by (organization_id, project) (increase(claude_code_token_usage_tokens_total{type=~"input|cacheRead|cacheCreation"}[1d]))
+                ) < 0.5
+                and
+                sum by (organization_id, project) (increase(claude_code_cost_usage_USD_total[1d])) > 50
+              for: 2h
+              labels: {severity: info, owner: finops}
+              annotations:
+                summary: "Low prompt-cache hit ratio on {{ $labels.project }}"
+                description: "Cache hit ratio {{ $value | humanizePercentage }} over 24h with >$50 spend — many short sessions or cold-context patterns."
+
+        - name: claude_code.governance
+          rules:
+            # Attribution rollout regressing: >10% of the day's spend arrived without a project tag.
+            - alert: ClaudeCodeAttributionCoverageLow
+              expr: >
+                (
+                  sum(increase(claude_code_cost_usage_USD_total{project="unattributed"}[1d])) or vector(0)
+                )
+                / sum(increase(claude_code_cost_usage_USD_total[1d])) > 0.10
+                and sum(increase(claude_code_cost_usage_USD_total[1d])) > 10
+              for: 1h
+              labels: {severity: warning, owner: governance}
+              annotations:
+                summary: "Claude Code attribution coverage below 90%"
+                description: "{{ $value | humanizePercentage }} of the last 24h spend is unattributed. Open Attribution Health for who is launching untagged sessions."
+                runbook: "Push client/managed-settings.json via MDM; put client/claude-attr on PATH."
+
+            # Someone is minting malformed Jira keys (typo in branch name / git config claude.jiraEpic).
+            - alert: ClaudeCodeInvalidJiraKeys
+              expr: >
+                count by (organization_id, user_email) (
+                  present_over_time(claude_code_session_count_total{jira_story="invalid"}[1d])
+                  or present_over_time(claude_code_session_count_total{jira_epic="invalid"}[1d])
+                ) > 0
+              for: 1h
+              labels: {severity: info, owner: governance}
+              annotations:
+                summary: "Malformed Jira keys from {{ $labels.user_email }}"
+                description: "{{ $value }} session(s) in 24h carried a jira.epic/jira.story that failed validation and were stamped `invalid`."
+
+            # Fleet hygiene: sessions from client versions outside the allowed set. Update the regex when
+            # you raise the floor (managed settings can't pin the CLI version; this is the detective control).
+            - alert: ClaudeCodeUnsupportedClientVersion
+              expr: >
+                count by (organization_id, user_email, service_version) (
+                  present_over_time(claude_code_session_count_total{service_version!~"2\\.1\\.(25[5-9]|2[6-9][0-9])"}[1d])
+                ) > 0
+              for: 6h
+              labels: {severity: info, owner: platform}
+              annotations:
+                summary: "Outdated Claude Code {{ $labels.service_version }} in use by {{ $labels.user_email }}"
+                description: "Below the supported floor; older clients may lack telemetry fields the dashboards rely on."
+
+        - name: claude_code.pipeline
+          rules:
+            # The Prometheus scrape of the collector's Claude Code metrics endpoint is failing.
+            - alert: ClaudeCodeCollectorScrapeDown
+              expr: up{job="claude-code"} == 0
+              for: 5m
+              labels: {severity: critical, owner: platform}
+              annotations:
+                summary: "Claude Code telemetry collector not scrapeable"
+                description: "Prometheus cannot reach the collector's :8889 metrics endpoint. Dashboards go flat; client exports queue then drop."
+
+            # The collector is failing to hand data to Loki / Prometheus exporter.
+            - alert: ClaudeCodeCollectorExportFailures
+              expr: >
+                sum by (exporter) (
+                  increase(otelcol_exporter_send_failed_log_records[10m])
+                  or increase(otelcol_exporter_send_failed_metric_points[10m])
+                ) > 0
+              for: 10m
+              labels: {severity: warning, owner: platform}
+              annotations:
+                summary: "Collector export failures ({{ $labels.exporter }})"
+                description: "{{ $value }} records failed to export in 10m. Check Loki readiness / collector logs."
+
+            # Collector alive but no Claude Code telemetry during weekday working hours. Uses token usage,
+            # which every live session re-exports continuously; session_count only appears when a session
+            # *starts* (the collector's Prometheus exporter drops idle series after 5 min).
+            - alert: ClaudeCodeNoTelemetryReceived
+              expr: >
+                absent_over_time(claude_code_token_usage_tokens_total[8h])
+                and on() (day_of_week() >= 1 and day_of_week() <= 5 and hour() >= 12 and hour() <= 20)
+              for: 1h
+              labels: {severity: warning, owner: platform}
+              annotations:
+                summary: "No Claude Code telemetry received in 8h on a weekday"
+                description: "Either nobody is using Claude Code or the client env (managed settings / endpoint / auth) broke. Verify with one manual session."
     recording_rules.yml:
       groups:
         - name: claude_code.attribution

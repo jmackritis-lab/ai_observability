@@ -70,6 +70,7 @@ before releasing.
 |--------------------|-----------------------------------|-----------------------------------------------------|
 | Collector pipeline | `local/otel-collector.yaml`       | `deploy-templates/values.yaml` → `alternateConfig`  |
 | Recording rules    | `local/prometheus-rules.yml`      | `deploy-templates/values.yaml` → `prometheus.serverFiles` |
+| Alerting rules     | `local/prometheus-alerts.yml`     | `deploy-templates/values.yaml` → `prometheus.serverFiles` |
 | Dashboards         | `local/grafana/dashboards/*.json` | `deploy-templates/config/grafana/dashboards/*.json` |
 
 `client/` holds what goes on developer machines: `managed-settings.json` (MDM-pushed telemetry

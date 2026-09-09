@@ -29,6 +29,7 @@ the source of truth you iterate on; `deploy-templates/` is the replication targe
 |--------------------|-----------------------------------|----------------------------------------------------------------------------|
 | Collector pipeline | `local/otel-collector.yaml`       | `deploy-templates/values.yaml` → `opentelemetry-collector.alternateConfig` |
 | Recording rules    | `local/prometheus-rules.yml`      | `deploy-templates/values.yaml` → `prometheus.serverFiles.recording_rules.yml` |
+| Alerting rules     | `local/prometheus-alerts.yml`     | `deploy-templates/values.yaml` → `prometheus.serverFiles.alerting_rules.yml` (minus the Loki-candidates comment block) |
 | Dashboards         | `local/grafana/dashboards/<scope>/*.json` | `deploy-templates/config/grafana/dashboards/<scope>/*.json`        |
 
 The two pipeline copies differ **only** in: `collector.env` value (`local-poc` vs `${env:COLLECTOR_ENV:-k8s}`),
@@ -61,9 +62,12 @@ and debug `verbosity` should differ):
 # pipeline (comments stripped — only the three knobs above should differ)
 diff <(yq '.["opentelemetry-collector"].alternateConfig' deploy-templates/values.yaml | grep -v '^\s*#' | grep -v '^\s*$') \
      <(grep -v '^\s*#' local/otel-collector.yaml | grep -v '^\s*$')
-# recording rules (must be identical)
-diff <(yq '.prometheus.serverFiles["recording_rules.yml"]' deploy-templates/values.yaml) \
+# recording rules (must be identical, comments aside)
+diff <(yq '.prometheus.serverFiles["recording_rules.yml"] | ... comments=""' deploy-templates/values.yaml) \
      <(yq '... comments=""' local/prometheus-rules.yml)
+# alerting rules (must be identical, comments aside)
+diff <(yq '.prometheus.serverFiles["alerting_rules.yml"] | ... comments=""' deploy-templates/values.yaml) \
+     <(yq '... comments=""' local/prometheus-alerts.yml)
 ```
 
 Validate collector config and rules with the real binaries before `docker compose up`
@@ -74,6 +78,8 @@ docker run --rm -v "$PWD/local/otel-collector.yaml:/etc/otelcol/config.yaml:ro" 
   otel/opentelemetry-collector-contrib:0.156.0 validate --config=/etc/otelcol/config.yaml
 docker run --rm -v "$PWD/local/prometheus-rules.yml:/rules.yml:ro" --entrypoint promtool \
   prom/prometheus:v3.13.1 check rules /rules.yml
+docker run --rm -v "$PWD/local/prometheus-alerts.yml:/alerts.yml:ro" --entrypoint promtool \
+  prom/prometheus:v3.13.1 check rules /alerts.yml
 ```
 
 To point Claude Code at the local stack: merge the `env` block from

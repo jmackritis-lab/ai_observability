@@ -1,0 +1,1087 @@
+{
+  "title": "Claude Code — Epic Scorecard",
+  "uid": "claude-code-epics",
+  "tags": [
+    "claude-code",
+    "otel",
+    "jira",
+    "chargeback",
+    "finops"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "title": "Executive Summary",
+      "type": "link",
+      "url": "/d/claude-code-executive",
+      "icon": "dashboard",
+      "keepTime": true,
+      "includeVars": true
+    },
+    {
+      "title": "Usage Audit",
+      "type": "link",
+      "url": "/d/claude-code-audit",
+      "icon": "dashboard",
+      "keepTime": true,
+      "includeVars": true
+    },
+    {
+      "title": "Attribution health",
+      "type": "link",
+      "url": "/d/claude-code-attribution",
+      "icon": "dashboard",
+      "keepTime": true,
+      "includeVars": true
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "organization_id",
+        "label": "Organization",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(claude_code_cost_usage_USD_total, organization_id)",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2
+      },
+      {
+        "name": "project",
+        "label": "Project",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\"}, project)",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2
+      },
+      {
+        "name": "jira_epic",
+        "label": "Epic",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\"}, jira_epic)",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Spend on selected epics (range)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range]))",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Engineers contributing",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "count(count by (user_email) (present_over_time(claude_code_session_count_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])))",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Active hours (human + Claude)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(claude_code_active_time_seconds_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])) / 3600",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "description": "claude_code_active_time_seconds_total summed across both `type=user` and `type=cli`."
+    },
+    {
+      "type": "stat",
+      "title": "Commits (range)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(claude_code_commit_count_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range]))",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Cost per commit",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])) / sum(increase(claude_code_commit_count_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range]))",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Cost per active hour",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])) / sum(increase(claude_code_active_time_seconds_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])) / 3600",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Epic scorecard (range)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Spend"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Cost / commit"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Tokens"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lines added"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Sessions"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Engineers"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Commits"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "PRs"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lines added"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Tokens"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "sum by (project, jira_epic) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range]))",
+          "refId": "A",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "expr": "sum by (project, jira_epic) (increase(claude_code_token_usage_tokens_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range]))",
+          "refId": "B",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "expr": "count by (project, jira_epic) (present_over_time(claude_code_session_count_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range]))",
+          "refId": "C",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "expr": "count by (project, jira_epic) (count by (project, jira_epic, user_email) (present_over_time(claude_code_session_count_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])))",
+          "refId": "D",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "expr": "sum by (project, jira_epic) (increase(claude_code_commit_count_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])) or (sum by (project, jira_epic) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])) * 0)",
+          "refId": "E",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "expr": "sum by (project, jira_epic) (increase(claude_code_pull_request_count_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])) or (sum by (project, jira_epic) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])) * 0)",
+          "refId": "F",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "expr": "sum by (project, jira_epic) (increase(claude_code_lines_of_code_count_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\", type=\"added\"}[$__range])) or (sum by (project, jira_epic) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])) * 0)",
+          "refId": "G",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "expr": "(sum by (project, jira_epic) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range]))) / (sum by (project, jira_epic) (increase(claude_code_commit_count_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])))",
+          "refId": "H",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "project": "Project",
+              "jira_epic": "Epic",
+              "Value #A": "Spend",
+              "Value #B": "Tokens",
+              "Value #C": "Sessions",
+              "Value #D": "Engineers",
+              "Value #E": "Commits",
+              "Value #F": "PRs",
+              "Value #G": "Lines added",
+              "Value #H": "Cost / commit"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Spend",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "description": "One row per project/epic over the selected range. `none` = work explicitly tagged as having no epic; `unattributed` = session started without the launcher; `invalid` = malformed key. Sort by any column."
+    },
+    {
+      "type": "timeseries",
+      "title": "Spend run-rate by epic (USD / day)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 14,
+        "x": 0,
+        "y": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 30
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (project, jira_epic) (claude_code:cost_usd:rate5m{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}) * 86400",
+          "legendFormat": "{{project}} / {{jira_epic}}",
+          "refId": "A"
+        }
+      ],
+      "description": "Recording-rule backed; stays fast at quarter-long ranges."
+    },
+    {
+      "type": "bargauge",
+      "title": "Spend by epic (range)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 10,
+        "x": 14,
+        "y": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "valueMode": "color"
+      },
+      "targets": [
+        {
+          "expr": "label_join(sum by (project, jira_epic) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])), \"pe\", \" / \", \"project\", \"jira_epic\")",
+          "legendFormat": "{{pe}}",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Chargeback — spend by project, trailing windows",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last 30 days"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "31–60 days ago"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "61–90 days ago"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "sum by (project) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[30d]))",
+          "refId": "A",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "expr": "sum by (project) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[30d] offset 30d)) or (sum by (project) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[30d])) * 0)",
+          "refId": "B",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "expr": "sum by (project) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[30d] offset 60d)) or (sum by (project) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[30d])) * 0)",
+          "refId": "C",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "project": "Project",
+              "Value #A": "Last 30 days",
+              "Value #B": "31–60 days ago",
+              "Value #C": "61–90 days ago"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Last 30 days",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "description": "Trailing 30-day windows anchored on 'now' (independent of the dashboard range). For calendar-month invoicing, export this with the range set to the month and read the 'Spend' column of the scorecard instead."
+    },
+    {
+      "type": "table",
+      "title": "Story detail for selected epics (range)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Spend"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Sessions"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Engineers"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Commits"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "sum by (project, jira_epic, jira_story) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range]))",
+          "refId": "A",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "expr": "count by (project, jira_epic, jira_story) (present_over_time(claude_code_session_count_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range]))",
+          "refId": "B",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "expr": "count by (project, jira_epic, jira_story) (count by (project, jira_epic, jira_story, user_email) (present_over_time(claude_code_session_count_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])))",
+          "refId": "C",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "expr": "sum by (project, jira_epic, jira_story) (increase(claude_code_commit_count_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])) or (sum by (project, jira_epic, jira_story) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])) * 0)",
+          "refId": "D",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "project": "Project",
+              "jira_epic": "Epic",
+              "jira_story": "Story",
+              "Value #A": "Spend",
+              "Value #B": "Sessions",
+              "Value #C": "Engineers",
+              "Value #D": "Commits"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Spend",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "description": "Narrow the Epic filter above to drill into one epic's stories."
+    },
+    {
+      "type": "table",
+      "title": "Engineers on selected epics (range)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Spend"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Sessions"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Commits"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lines added"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "sum by (user_email) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range]))",
+          "refId": "A",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "expr": "count by (user_email) (present_over_time(claude_code_session_count_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range]))",
+          "refId": "B",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "expr": "sum by (user_email) (increase(claude_code_commit_count_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])) or (sum by (user_email) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])) * 0)",
+          "refId": "C",
+          "format": "table",
+          "instant": true,
+          "range": false
+        },
+        {
+          "expr": "sum by (user_email) (increase(claude_code_lines_of_code_count_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\", type=\"added\"}[$__range])) or (sum by (user_email) (increase(claude_code_cost_usage_USD_total{organization_id=~\"$organization_id\", project=~\"$project\", jira_epic=~\"$jira_epic\"}[$__range])) * 0)",
+          "refId": "D",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "user_email": "Engineer",
+              "Value #A": "Spend",
+              "Value #B": "Sessions",
+              "Value #C": "Commits",
+              "Value #D": "Lines added"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Spend",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "description": "Who is doing the work on these epics. Spend is an input, not a performance score — pair it with commits and lines."
+    }
+  ],
+  "description": "Delivery-lead and chargeback view: spend and output per Jira epic and story, trailing-window spend per project."
+}

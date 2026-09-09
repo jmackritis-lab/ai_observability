@@ -225,6 +225,34 @@ Claude Code **cannot** refuse to start without a given attribute. Enforcement is
 
 ---
 
+## 6. Alerting — what pages, what informs
+
+`local/prometheus-alerts.yml` (mirrored into the Helm `prometheus.serverFiles.alerting_rules.yml`)
+turns the same counters into a handful of detective controls, grouped by owner:
+
+| Group      | Alert                                | Signal                                                                 |
+|------------|--------------------------------------|------------------------------------------------------------------------|
+| finops     | `ClaudeCodeUserSpendSpike`           | user's 24h spend > $25 **and** > 3× their trailing 7-day daily average |
+| finops     | `ClaudeCodeProjectSpendSpike`        | project's 24h spend > $100 **and** > 2.5× its trailing daily average   |
+| finops     | `ClaudeCodeCacheHitRatioLow`         | cache-read share < 50% over 24h on a project spending > $50            |
+| governance | `ClaudeCodeAttributionCoverageLow`   | > 10% of 24h spend stamped `unattributed`                              |
+| governance | `ClaudeCodeInvalidJiraKeys`          | any session in 24h stamped `invalid` (per user)                        |
+| platform   | `ClaudeCodeUnsupportedClientVersion` | sessions from a `service_version` outside the allowed regex            |
+| platform   | `ClaudeCodeCollectorScrapeDown`      | `up{job="claude-code"} == 0` for 5m                                    |
+| platform   | `ClaudeCodeCollectorExportFailures`  | collector `send_failed_*` counters increasing                          |
+| platform   | `ClaudeCodeNoTelemetryReceived`      | no sessions for 8h during weekday working hours                        |
+
+Event-only signals (bypassPermissions escalations, API refusals, retries exhausted, auth failures,
+sandbox-disabled Bash) are LogQL expressions documented at the bottom of the same file; they need
+the Loki ruler, which the bundle does not yet enable. No Alertmanager is bundled either — alerts are
+visible on Prometheus `/alerts` and in Grafana's alert list until a receiver is configured.
+
+Dashboards that consume these signals: *Executive Summary* and *Epic Scorecard* (spend),
+*Attribution Health* (coverage / invalid), *My Usage* (per-engineer transparency), *Collector Health*
+(pipeline).
+
+---
+
 ## References
 
 - Claude Code — Monitoring usage (OTEL): <https://code.claude.com/docs/en/monitoring-usage>
