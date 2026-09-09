@@ -107,17 +107,34 @@ down the hierarchy: `project → jira.epic → jira.story`.
 
 - **Low/bounded** (`model`, `type`, `agent.name`, `skill.name`, `tool_name`, `project`,
   `jira.epic`) → safe as **metric labels** → fast Grafana breakdowns.
-- **High/unbounded** (`jira.story`, `session.id`, `prompt.id`) →
-  **logs/events only**; derive per-story cost in **LogQL** over `api_request` events.
+- **High/unbounded** (`jira.story`, `session.id`, `prompt.id`) → expensive as metric labels;
+  the long-range answer is **recording rules** (below) and **LogQL** over events, not raw series.
 
-> PoC compromise: for the local single-user stack `jira.story` is kept as a metric label too (it's
-> convenient and low-volume). For the team/K8s stage, drop it from the metrics pipeline in the
-> collector (keep it only in logs) to bound Prometheus cardinality.
+**Why `session.id` stays on the raw metrics (do not strip it in the collector).** `session.id`
+is the *only* per-process identity Claude Code emits — there is no `service.instance.id`. Its
+metrics are cumulative counters. If two concurrent sessions of the same user on the same
+project/epic/story/model lose `session.id`, their counters collapse onto one label set in the
+collector's Prometheus exporter and **overwrite each other (last write wins, not summed)** —
+totals go silently wrong. The same applies to `OTEL_METRICS_INCLUDE_SESSION_ID=false` on the
+client. So: keep `session.id` on raw series, bound the *cost* of it with retention and with
+recording rules, and query the raw series only over short windows.
 
-Control built-in cardinality with the include-gates:
-`OTEL_METRICS_INCLUDE_SESSION_ID=false` (drop from metrics; keep on logs),
-`OTEL_METRICS_INCLUDE_ACCOUNT_UUID`, `OTEL_METRICS_INCLUDE_ENTRYPOINT`,
-`OTEL_METRICS_INCLUDE_VERSION`, `OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES`.
+**Recording rules are the cardinality-safe layer** (`local/prometheus-rules.yml`, mirrored in
+`deploy-templates/values.yaml → prometheus.serverFiles.recording_rules.yml`). They pre-aggregate
+the raw counters into session-free series keyed only on bounded dimensions
+(`claude_code:cost_usd:rate5m`, `claude_code:tokens:rate5m`, `claude_code:active_time_seconds:rate5m`,
+`claude_code:cost_usd:increase1h`) plus two governance ratios
+(`claude_code:cost_usd_unattributed:ratio_rate5m`, `claude_code:cost_usd_invalid_jira:ratio_rate5m`).
+Dashboards that trend more than ~7 days should query these instead of the raw counters.
+
+**`jira.story` is currently kept as a metric label** because every usage dashboard drills down on
+it (template variable + `jira_story=~"$jira_story"` filters). Demoting it to logs-only is a
+dashboard redesign, not just a collector change; revisit when
+`count(count by (jira_story) (claude_code_token_usage_tokens_total))` grows past a few thousand.
+
+Other built-in cardinality gates: `OTEL_METRICS_INCLUDE_ACCOUNT_UUID`,
+`OTEL_METRICS_INCLUDE_ENTRYPOINT`, `OTEL_METRICS_INCLUDE_VERSION`,
+`OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES`.
 
 ### 3.3 Running Claude Code with attribution (manual for now)
 
@@ -134,8 +151,11 @@ one Jira ticket ≈ one session — the attributes are read once at startup and 
 > `OTEL_RESOURCE_ATTRIBUTES` value rules: comma-separated `key=value`, US-ASCII, no
 > spaces/quotes/commas/semicolons/backslashes in values (percent-encode).
 
-Automating this (a launcher wrapper deriving `project`/`jira.story` from git and resolving
-`jira.epic` via Jira) is deliberately **out of scope for now** — a later phase.
+**Launcher wrapper (implemented):** `client/claude-attr.sh` / `client/claude-attr.ps1` derive
+`project` from the `origin` remote, `jira.story` from the branch name, and `jira.epic` from
+`git config claude.jiraEpic` (set once per repo), then `exec claude`. Env overrides:
+`CLAUDE_PROJECT`, `CLAUDE_JIRA_STORY`, `CLAUDE_JIRA_EPIC`. Resolving the epic from Jira
+automatically remains a later phase.
 
 ### 3.4 User identity — native, no injection needed
 
@@ -167,14 +187,23 @@ uid); then add `user.ldap=<uid>` to `OTEL_RESOURCE_ATTRIBUTES` alongside the oth
 
 Claude Code **cannot** refuse to start without a given attribute. Enforcement is layered:
 
-1. **Launcher wrapper** (later phase) — always populates every key (sentinel default). Ensures *presence*.
-2. **OTel Collector — the authoritative enforcement point** (server-side, users cannot bypass):
-   - `resource` / `transform` processor → inject defaults for missing keys.
-   - `filter` processor → **drop or route** telemetry missing required keys (e.g. no `project`).
-   - `attributes` processor → validate/normalize values (regex `^[A-Z]+-[0-9]+$` for `jira.story`/`jira.epic`).
-   - Also the single place to strip `session.id` from metrics, cap label sets, and redact content.
-3. **Managed `settings.json`** (MDM, highest precedence) — pins telemetry ON, endpoint, auth, and the
-   static baseline (`team`); users can't unset it.
+1. **Launcher wrapper** (`client/claude-attr.*`) — always populates every key (sentinel `none`
+   when a dimension does not apply). Ensures *presence* on cooperating clients.
+2. **OTel Collector — the authoritative enforcement point** (server-side, users cannot bypass).
+   Implemented as the `transform/attribution` processor, identical for metrics and logs:
+   - missing/empty `project`, `jira.epic`, `jira.story` → sentinel **`unattributed`** (distinct
+     from the user-set `none`, so "forgot to tag" and "does not apply" are separable);
+   - `project` lower-cased and restricted to `[a-z0-9._-]`; Jira keys upper-cased and validated
+     against `^[A-Z][A-Z0-9]*-[0-9]+$`; anything else → **`invalid`** (a typo cannot mint a label);
+   - a `filter` processor that *drops* untagged telemetry was considered and rejected: dropping
+     loses spend, whereas stamping `unattributed` makes the gap a KPI
+     (`claude_code:cost_usd_unattributed:ratio_rate5m`, target → 0).
+3. **Managed `settings.json`** (MDM/GPO, highest precedence) — `client/managed-settings.json` pins
+   telemetry ON, the endpoint, privacy toggles and export intervals; users cannot unset it.
+   Windows `C:/Program Files/ClaudeCode/managed-settings.json`, macOS
+   `/Library/Application Support/ClaudeCode/managed-settings.json`, Linux `/etc/claude-code/managed-settings.json`.
+   OTLP auth goes in the same file via `OTEL_EXPORTER_OTLP_HEADERS` or `otelHeadersHelper`
+   (a script printing a JSON header map, re-run every ~29 min).
 
 > We cannot define **new metric names**, but we *can* mandate **dimensions** and derive new metrics
 > downstream (Prometheus recording rules, LogQL).
@@ -185,9 +214,10 @@ Claude Code **cannot** refuse to start without a given attribute. Enforcement is
 
 1. **Local PoC** — collector + Prometheus + Loki + Grafana as a docker-compose stack (`local/`);
    single client; validate slicing by model/agent/skill/project/ticket; iterate dashboards.
-2. **Team** — ship `env` block + launcher via **managed `.claude/settings.json`**; standardize the
-   attribute schema; auth the OTLP endpoint (`OTEL_EXPORTER_OTLP_HEADERS` / `otelHeadersHelper`,
-   refreshed ~29 min); enforce required attributes in the collector.
+2. **Team** — ship `client/managed-settings.json` via MDM/GPO and `client/claude-attr.*` on PATH;
+   standardize the attribute schema; auth the OTLP endpoint (`OTEL_EXPORTER_OTLP_HEADERS` /
+   `otelHeadersHelper`, refreshed ~29 min) — **collector-side auth (bearertokenauth extension +
+   TLS) is the remaining open item**; attribute enforcement is already in the collector (§4).
 3. **Kubernetes target state** — the self-contained Helm bundle (`deploy-templates/`): upstream
    collector + prometheus + loki + grafana subcharts, plain Deployments, **no operator/CRD or
    cluster-wide monitoring prerequisites**; add longer retention, PVCs, OTLP auth, and multi-tenancy

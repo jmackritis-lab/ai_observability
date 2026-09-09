@@ -69,7 +69,12 @@ before releasing.
 | Artifact           | Iterate here (source of truth)    | Replicate to                                        |
 |--------------------|-----------------------------------|-----------------------------------------------------|
 | Collector pipeline | `local/otel-collector.yaml`       | `deploy-templates/values.yaml` → `alternateConfig`  |
+| Recording rules    | `local/prometheus-rules.yml`      | `deploy-templates/values.yaml` → `prometheus.serverFiles` |
 | Dashboards         | `local/grafana/dashboards/*.json` | `deploy-templates/config/grafana/dashboards/*.json` |
+
+`client/` holds what goes on developer machines: `managed-settings.json` (MDM-pushed telemetry
+config) and `claude-attr.sh` / `claude-attr.ps1` (launcher that derives `project` / `jira.*`
+attribution from the git checkout).
 
 See [`docs/analytics.md`](docs/analytics.md) for the attribution model, cardinality guidance, and
 rollout plan, and [`spec/`](spec/) for the full Claude Code OTEL vocabulary.

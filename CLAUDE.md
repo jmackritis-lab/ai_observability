@@ -10,6 +10,8 @@ Prometheus for metrics + Loki for events → Grafana for dashboards):
 
 - `local/` — a docker-compose testbed you iterate against real Claude Code traffic on your laptop.
 - `deploy-templates/` — a self-contained Helm bundle of upstream subcharts for a team Kubernetes install.
+- `client/` — what goes on developer machines: `managed-settings.json` (MDM-pushed OTEL env) and
+  `claude-attr.sh` / `.ps1` (launcher that derives `project` / `jira.*` from the git checkout).
 
 The goal is attributing token/cost usage to business dimensions (`project`, `jira.epic`,
 `jira.story`, `user.email`) **without** capturing prompts, responses, file contents, or raw API
@@ -26,6 +28,7 @@ the source of truth you iterate on; `deploy-templates/` is the replication targe
 | Artifact           | Iterate here (source of truth)    | Replicate to (deployable)                                                  |
 |--------------------|-----------------------------------|----------------------------------------------------------------------------|
 | Collector pipeline | `local/otel-collector.yaml`       | `deploy-templates/values.yaml` → `opentelemetry-collector.alternateConfig` |
+| Recording rules    | `local/prometheus-rules.yml`      | `deploy-templates/values.yaml` → `prometheus.serverFiles.recording_rules.yml` |
 | Dashboards         | `local/grafana/dashboards/<scope>/*.json` | `deploy-templates/config/grafana/dashboards/<scope>/*.json`        |
 
 The two pipeline copies differ **only** in: `collector.env` value (`local-poc` vs `${env:COLLECTOR_ENV:-k8s}`),
@@ -41,6 +44,7 @@ cd local
 docker compose up -d                     # Grafana :3000 · Prometheus :9090 · Loki :3100 · OTLP :4317/:4318
 docker compose logs -f otel-collector    # confirm data flows; discover exact attribute names
 docker compose down                      # stop        (down -v also wipes volumes)
+python demo/seed_demo_data.py            # seed 14 days of synthetic multi-user history (see local/demo/README.md)
 
 # Helm bundle — always validate before proposing a release
 helm dependency update deploy-templates  # pull subchart .tgz into deploy-templates/charts/
@@ -54,7 +58,22 @@ Check the two collector-pipeline copies haven't drifted (only `collector.env`, t
 and debug `verbosity` should differ):
 
 ```bash
-diff <(yq '.["opentelemetry-collector"].alternateConfig' deploy-templates/values.yaml) local/otel-collector.yaml
+# pipeline (comments stripped — only the three knobs above should differ)
+diff <(yq '.["opentelemetry-collector"].alternateConfig' deploy-templates/values.yaml | grep -v '^\s*#' | grep -v '^\s*$') \
+     <(grep -v '^\s*#' local/otel-collector.yaml | grep -v '^\s*$')
+# recording rules (must be identical)
+diff <(yq '.prometheus.serverFiles["recording_rules.yml"]' deploy-templates/values.yaml) \
+     <(yq '... comments=""' local/prometheus-rules.yml)
+```
+
+Validate collector config and rules with the real binaries before `docker compose up`
+(in Git Bash prefix with `MSYS_NO_PATHCONV=1` so container paths aren't rewritten):
+
+```bash
+docker run --rm -v "$PWD/local/otel-collector.yaml:/etc/otelcol/config.yaml:ro" \
+  otel/opentelemetry-collector-contrib:0.156.0 validate --config=/etc/otelcol/config.yaml
+docker run --rm -v "$PWD/local/prometheus-rules.yml:/rules.yml:ro" --entrypoint promtool \
+  prom/prometheus:v3.13.1 check rules /rules.yml
 ```
 
 To point Claude Code at the local stack: merge the `env` block from
@@ -70,6 +89,15 @@ To point Claude Code at the local stack: merge the `env` block from
   high-cardinality attrs (`jira.story`, `session.id`, `prompt.id`) belong in **logs only** at team
   scale — drop them from the metrics pipeline in the collector. The local PoC keeps `session.id`/`jira.story`
   as labels for convenience.
+- **Never strip `session.id` from metrics in the collector** (and don't set
+  `OTEL_METRICS_INCLUDE_SESSION_ID=false`). It is Claude Code's only per-process identity; without
+  it, cumulative counters from concurrent sessions with identical labels overwrite each other in
+  the Prometheus exporter. Cardinality is handled by retention + the recording rules instead
+  (`docs/analytics.md` §3.2). `jira.story` stays a metric label because every dashboard drills on it.
+- **The collector stamps sentinels**: missing `project`/`jira.epic`/`jira.story` → `unattributed`,
+  malformed values → `invalid`, `project` lower-cased, Jira keys upper-cased
+  (`transform/attribution`). `none` is the *user-set* "does not apply" value. Dashboards and rules
+  rely on these exact strings.
 - **Attribution is injected via `OTEL_RESOURCE_ATTRIBUTES`** (comma-separated `key=value`), read
   once at `claude` startup and static for the whole session — hence "one Jira ticket ≈ one session".
   User identity (`user.email`, `user.id`, `organization.id`) is native and needs no injection.
