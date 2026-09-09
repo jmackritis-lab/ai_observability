@@ -74,4 +74,4 @@ if ($SlackTest) {
 Write-Host ""
 Write-Host "Done. Grafana  http://localhost:3000  (home = Executive Summary; set range to Last 14 days)" -ForegroundColor Green
 Write-Host "      Alerts   http://localhost:9093   Prometheus http://localhost:9090/alerts"
-Write-Host "Remember: your own Claude Code sessions land as 'unattributed' unless launched via client/claude-attr."
+Write-Host "Remember: your own Claude Code sessions land as 'unattributed' unless started in a repo with committed attribution settings (this repo has them) or via client/claude-attr."

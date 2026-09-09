@@ -32,6 +32,8 @@ history. Everything here runs on one laptop; nothing leaves it except Slack aler
 
 ## The morning of
 
+### 1. Reseed
+
 Reseed so the last-24h tiles and the right edge of every trend are populated (the seed ends at seed
 time; re-seeding on top would double-count, so the script wipes first):
 
@@ -43,31 +45,56 @@ time; re-seeding on top would double-count, so the script wipes first):
 Then pick the drill-down target: Epic Scorecard → note a high-spend engineer → My Usage → copy the
 top *Session* id → paste into Session Explorer's dropdown → confirm the cost tile matches. Leave it open.
 
-## The alert arc (untagged -> Slack -> tagged -> resolved)
+### 2. Trip the attribution alert and park coverage at 89.x%
 
-Numbers assume a same-morning reseed (the seeded last-24h total is ~$35-40 of which ~$3 is already
-untagged; check with the Attribution Health tile set to **Last 24 hours**).
+The alert fires **before** the demo; the demo itself only shows the recovery. Goal: leave the
+unattributed share of the last 24 h at **10.2-10.7%** (coverage 89.3-89.8%), i.e. just over the 10%
+threshold, so that a couple of dollars of tagged spend during screen 3 push it back under and the
+`[RESOLVED]` Slack message lands while you are still talking.
 
-| Step | What to do | Timing |
+Watch the live number in Prometheus (http://localhost:9090) throughout:
+
+```promql
+100 * sum(increase(claude_code_cost_usage_USD_total{project="unattributed"}[1d])) / sum(increase(claude_code_cost_usage_USD_total[1d]))
+```
+
+| Step | What to do | Expect |
 |------|------------|--------|
-| 1 | In an empty scratch folder start `claude` (untagged) and spend **~$1-2** — a couple of prompts on a big file. Stop there: every extra untagged dollar needs ~8 tagged dollars to undo. | Prometheus flips the alert to *pending* on the next evaluation (<= 1 min) |
-| 2 | Wait for the 10-minute hold, then Alertmanager's 30 s group wait | Slack message ~11 min after crossing |
-| 3 | Open this repo (settings attribute it) and spend **~$4-6** tagged | The ratio drops under 10% -> alert *inactive* immediately |
-| 4 | Alertmanager sends the **resolved** notice on its next group interval | Green Slack message within ~5 min |
+| a | Right after the seed the number reads ~7%. In an **empty scratch folder** (no `.claude/settings.json` anywhere above it) start `claude` with the default model and ask one question about a big file — about **$0.50-0.70** of spend. | Number moves within ~30 s (10 s export + 15 s scrape) |
+| b | Re-run the query. Below 10.2%? Ask one more small question in the same untagged session. **Over 10.7%? Stop** — every extra untagged dollar costs 9 tagged dollars to undo during the demo. | Land in 10.2-10.7% |
+| c | Close the untagged session. Wait ~11 min (10 min `for:` hold + 30 s group wait). | **Red** Slack message: `ClaudeCodeAttributionCoverageLow` firing. Alertmanager must have *sent* the firing notice or it will not send a resolved one later. |
+| d | From now until screen 3: **no Claude Code activity in this repo** (terminal or VS Code). Any tagged spend clears the alert early and wastes the recovery moment. Untagged activity elsewhere is fine but pushes the number up. | http://localhost:9093 shows the alert firing |
 
-Do step 1 before the talk starts so the Slack message lands during screen 2; do step 3 live in
-screen 3. Watch the live number with
-`100 * sum(increase(claude_code_cost_usage_USD_total{project="unattributed"}[1d])) / sum(increase(claude_code_cost_usage_USD_total[1d]))`
-in Prometheus.
+Rule of thumb from the seeded baseline (total ≈ $38, untagged ≈ $2.8): about **$1.30** untagged lands
+at ~10.5%, and clearing that then needs about **$2** tagged. Formula if the seed differs:
+extra untagged to reach share *S* = (*S*·total − untagged) / (1 − *S*); tagged needed to clear = 10·untagged − total.
+
+The number drifts during the day as seeded spend from 24 h ago slides out of the window (the live
+untagged dollars stay, the seeded tagged dollars leave), so re-check it in the preflight — see there.
+
+## The recovery arc during the demo (screen 2 → screen 3 → Slack)
+
+| When | What happens | Timing |
+|------|--------------|--------|
+| Screen 2 | Attribution Health shows your e-mail as the top untagged launcher; Slack shows this morning's **red** message. "This fired at 09:xx on exactly this condition." | already there |
+| Screen 3, first thing | From the repo root start the tagged fan-out (each session ~$1, all attributed to project/epic/story by the committed settings): `for i in 1 2 3; do claude -p "Write a detailed critical review of this document" < big_pdf.txt > /dev/null & done` — then ask your interactive question in this repo while they run. | Usage Audit numbers move within ~10 s |
+| +1-2 min | Share drops under 10% → alert *inactive* on the next 15 s evaluation. Show it on http://localhost:9093 or the Attribution coverage tile if you like. | immediate |
+| +1 to +5 min | Alertmanager's next 5-min group tick sends the **green** `[RESOLVED] ClaudeCodeAttributionCoverageLow` message; its body says *RESOLVED* and quotes the last reading while firing. Switch to Slack when you hear the ping — during screen 4 or Q&A is fine. | ≤ 5 min after clearing |
+
+If the number was parked at ~10.5% three fan-out sessions are plenty; if the preflight shows it drifted
+to 11%+, start five or six. Measured 2026-09-09: $1.80 untagged needed ~$7 tagged to clear, so parking
+low matters.
 
 ## Five-minute preflight
 
 - [ ] `docker info` succeeds; `docker compose ps` (in `local/`) shows five containers Up
 - [ ] http://localhost:9090/targets — both targets UP
-- [ ] http://localhost:9093 — attribution alert visible (expected until you launch tagged sessions)
+- [ ] http://localhost:9093 — `ClaudeCodeAttributionCoverageLow` **firing** (not pending) and this morning's red message in Slack
+- [ ] Live unattributed share (PromQL above) reads 10.2-10.7%. Drifted to 11%+? Plan for 5-6 fan-out sessions in screen 3, or run one tagged `claude -p` now to trim it (stay above 10.1%!). Dropped under 10%? The alert has cleared — repeat step 2a/2b with a tiny untagged prompt and wait out the 11 min again.
 - [ ] Grafana opens on Executive Summary; range **Last 14 days**; projector zoom set
 - [ ] Tabs in order: Executive · Attribution Health · Usage Audit · Session Explorer · Slack channel
 - [ ] `.claude/settings.local.json` present in the demo repo with the story; a scratch folder ready for the untagged session
+- [ ] `big_pdf.txt` (git-ignored; regenerate with `pdftotext -layout big_pdf.pdf big_pdf.txt`) present in the repo root for the tagged fan-out; a terminal open at the repo root with the fan-out command pasted and ready; no other Claude Code session open in this repo
 - [ ] No seeder / reload terminals still running
 
 ## The four screens (≈12 min)
@@ -75,8 +102,8 @@ in Prometheus.
 | # | Screen | Show | Say |
 |---|--------|------|-----|
 | 1 | **Executive Summary** | Spend, active engineers, cost per commit, run-rate by project | "Claude Code's own cost counters, every developer, no prompts or code ever collected." Point at **Attribution coverage**: "that's the health of the rollout, not of the engineers." Click it. |
-| 2 | **Attribution Health** | Who launches untagged sessions; the sentinel table | "Tagging is enforced server-side in the collector — nobody can opt out by editing local settings." Switch to Slack: "and this is the alert that fired on exactly this condition." Mention the window: alert = last 24 h, tile = selected range. |
-| 3 | **Usage Audit** | Dropdowns project → epic → story; then the live session | Open this repo in Claude Code (settings attribute it), ask it something small. Filter to that project/story; the numbers move within ~10 s. "One Jira ticket ≈ one session; that's the whole discipline we ask of engineers." |
+| 2 | **Attribution Health** | Who launches untagged sessions; the sentinel table | "Tagging is enforced server-side in the collector — nobody can opt out by editing local settings." Switch to Slack: "and this is the alert that fired this morning on exactly this condition — red, still open." Mention the window: alert = last 24 h, tile = selected range. |
+| 3 | **Usage Audit** | Dropdowns project → epic → story; then the live sessions | Kick off the tagged fan-out from the repo root, then ask Claude Code something small in this repo (settings attribute both). Filter to that project/story; the numbers move within ~10 s. "One Jira ticket ≈ one session; that's the whole discipline we ask of engineers." The alert clears in the background; the green `[RESOLVED]` Slack message follows within 5 min — show it when it lands. |
 | 4 | **Session Explorer** | The pre-selected session: cost, tool sequence, prompts panel | "Every tool call, its duration and whether it was allowed — and the prompt itself is `<REDACTED>` by design." |
 
 Keep **Epic Scorecard** (chargeback), **My Usage** (per-engineer transparency), **Governance &
@@ -99,7 +126,7 @@ Security** (permissions, MCP, plugins) and **Collector Health** open for questio
   `unattributed` when started outside a repo with committed attribution settings — that is the
   live-fix moment in screen 3.
 - Synthetic Bash events carry a redacted placeholder command; only real sessions show real commands.
-- Resolved notifications are on: when the attribution alert clears mid-demo, Slack gets a green message.
+- Resolved notifications are on: when the attribution alert clears in screen 3, Slack gets a green message titled `[RESOLVED] ...` whose body says *RESOLVED* explicitly. The quoted percentage is the last value seen while firing (e.g. 10.3%), not the current one — say so if asked.
 
 ## Recovery
 
@@ -109,3 +136,5 @@ Security** (permissions, MCP, plugins) and **Collector Health** open for questio
 | Dashboards flat at the right edge | `reset_and_seed.ps1` (history is anchored at seed time) |
 | Slack silent | `docker compose logs alertmanager --since 5m` — a notify error names the receiver / missing webhook file |
 | Alert shows a different % than the tile | Alert = last 24 h; tile follows the time picker |
+| Alert cleared before the demo (someone used Claude Code in this repo) | Tiny untagged prompt in the scratch folder to cross 10% again, then wait the 11 min for the red message — the resolved notice only goes out for an alert that was notified as firing |
+| Green message has not arrived 6 min after the alert went inactive | Check http://localhost:9093 shows no active alert, then `docker compose logs alertmanager --since 10m`; a `notify` error names the receiver |

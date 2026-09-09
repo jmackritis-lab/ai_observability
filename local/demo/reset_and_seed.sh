@@ -41,5 +41,5 @@ cat <<EOF
 
 Done. Grafana  http://localhost:3000  (home = Executive Summary; set range to Last 14 days)
       Alerts   http://localhost:9093   Prometheus http://localhost:9090/alerts
-Remember: your own Claude Code sessions land as 'unattributed' unless launched via client/claude-attr.
+Remember: your own Claude Code sessions land as 'unattributed' unless started in a repo with committed attribution settings (this repo has them) or via client/claude-attr.
 EOF

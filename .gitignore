@@ -22,3 +22,7 @@ local/demo/out/
 # never commit notification secrets (Slack webhook etc.)
 local/secrets/*
 !local/secrets/README.md
+
+# Local demo fodder for generating tagged spend (large scanned PDF, not part of the repo)
+big_pdf.pdf
+big_pdf.txt
