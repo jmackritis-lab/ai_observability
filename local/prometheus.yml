@@ -6,6 +6,12 @@ global:
 rule_files:
   - /etc/prometheus/rules/*.yml
 
+# Alerts (claude-code-alerts.yml) are routed by Alertmanager (local/alertmanager.yml).
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
 scrape_configs:
   # Claude Code metrics, re-exported by the collector.
   - job_name: claude-code

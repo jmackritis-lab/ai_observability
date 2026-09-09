@@ -249,8 +249,100 @@ prometheus:
   fullnameOverride: prometheus
   rbac:
     create: false
+  # Bundled Alertmanager (prometheus-community/alertmanager subchart). Routing config is mirrored
+  # from local/alertmanager.yml (source of truth). Receivers post to Slack via an incoming webhook
+  # read from a mounted Secret — create it before/after install (no restart needed):
+  #   kubectl -n claude-code-telemetry create secret generic alertmanager-slack \
+  #     --from-file=slack-webhook=./local/secrets/slack-webhook
+  # (or provision it with External Secrets like `grafana-sso`).
   alertmanager:
-    enabled: false
+    enabled: true
+    fullnameOverride: alertmanager     # -> Service `alertmanager:9093`, matched by server.alertmanagers below
+    persistence:
+      enabled: true
+      size: 1Gi
+    extraSecretMounts:
+      - name: slack
+        mountPath: /etc/alertmanager/secrets
+        secretName: alertmanager-slack
+        readOnly: true
+        optional: true                 # pod starts even before the Secret exists
+    config:
+      global:
+        resolve_timeout: 5m
+        # slack_api_url: 'https://hooks.slack.com/services/XXX/YYY/ZZZ'
+
+      route:
+        receiver: platform            # anything without an owner label lands with the stack owners
+        group_by: [alertname, owner, project]
+        group_wait: 30s
+        group_interval: 5m
+        repeat_interval: 12h
+        routes:
+          # First match wins: informational alerts are visible in the UI / Grafana but never notify.
+          - matchers: [severity = info]
+            receiver: "null"
+          - matchers: [owner = finops]
+            receiver: finops
+            # spend spikes are daily signals; don't re-page every few hours
+            repeat_interval: 24h
+          - matchers: [owner = governance]
+            receiver: governance
+            repeat_interval: 24h
+          - matchers: [owner = platform]
+            receiver: platform
+            # pipeline problems: keep nagging until fixed
+            repeat_interval: 4h
+
+      inhibit_rules:
+        # If the collector cannot be scraped, every other Claude Code alert is noise — suppress them.
+        - source_matchers: [alertname = ClaudeCodeCollectorScrapeDown]
+          target_matchers: [alertname =~ "ClaudeCode.*", alertname != "ClaudeCodeCollectorScrapeDown"]
+          equal: []
+        # No telemetry at all also implies spend/attribution alerts are meaningless.
+        - source_matchers: [alertname = ClaudeCodeNoTelemetryReceived]
+          target_matchers: [owner =~ "finops|governance"]
+          equal: []
+
+      receivers:
+        - name: "null"        # intentional blackhole for severity=info
+
+        - name: finops
+          slack_configs:
+            - api_url_file: /etc/alertmanager/secrets/slack-webhook
+              channel: "#claude-code-alerts"      # informational: an incoming webhook is bound to its channel
+              send_resolved: true
+              title: '{{ .CommonLabels.alertname }} — {{ .CommonAnnotations.summary }}'
+              text: |-
+                {{ range .Alerts }}*{{ .Labels.severity | toUpper }}* {{ .Annotations.description }}
+                {{ if .Annotations.runbook }}_Runbook:_ {{ .Annotations.runbook }}{{ end }}
+                {{ end }}
+              title_link: 'http://localhost:3000/d/claude-code-attribution'
+
+        - name: governance
+          slack_configs:
+            - api_url_file: /etc/alertmanager/secrets/slack-webhook
+              channel: "#claude-code-alerts"      # informational: an incoming webhook is bound to its channel
+              send_resolved: true
+              title: '{{ .CommonLabels.alertname }} — {{ .CommonAnnotations.summary }}'
+              text: |-
+                {{ range .Alerts }}*{{ .Labels.severity | toUpper }}* {{ .Annotations.description }}
+                {{ if .Annotations.runbook }}_Runbook:_ {{ .Annotations.runbook }}{{ end }}
+                {{ end }}
+              title_link: 'http://localhost:3000/d/claude-code-attribution'
+
+        - name: platform
+          slack_configs:
+            - api_url_file: /etc/alertmanager/secrets/slack-webhook
+              channel: "#claude-code-alerts"      # informational: an incoming webhook is bound to its channel
+              send_resolved: true
+              title: '{{ .CommonLabels.alertname }} — {{ .CommonAnnotations.summary }}'
+              text: |-
+                {{ range .Alerts }}*{{ .Labels.severity | toUpper }}* {{ .Annotations.description }}
+                {{ if .Annotations.runbook }}_Runbook:_ {{ .Annotations.runbook }}{{ end }}
+                {{ end }}
+              title_link: 'http://localhost:3000/d/claude-code-attribution'
+
   kube-state-metrics:
     enabled: false
   prometheus-node-exporter:
@@ -264,6 +356,11 @@ prometheus:
     # (http://prometheus-server) resolves regardless of the release name.
     fullnameOverride: prometheus-server
     retention: 365d
+    # Static target instead of the chart's default kubernetes_sd pod discovery, which would need
+    # cluster RBAC this bundle deliberately does not have (rbac.create: false).
+    alertmanagers:
+      - static_configs:
+          - targets: ["alertmanager:9093"]
     persistentVolume:
       enabled: true
       size: 20Gi
@@ -310,9 +407,8 @@ prometheus:
   # Recording rules — session-free, low-cardinality series for long-range dashboards.
   # Source of truth: local/prometheus-rules.yml (keep byte-identical apart from indentation).
   # Alerting rules — source of truth: local/prometheus-alerts.yml (keep identical apart from
-  # indentation; the Loki-candidate comment block is intentionally not mirrored). No Alertmanager is
-  # bundled: alerts surface in Prometheus' /alerts page and Grafana's Prometheus alert list until
-  # `alertmanager.enabled` / an external alerting.alertmanagers target is configured.
+  # indentation; the Loki-candidate comment block is intentionally not mirrored). Routed by the
+  # bundled Alertmanager above (prometheus.alertmanager.config).
   serverFiles:
     alerting_rules.yml:
       groups:
@@ -583,6 +679,15 @@ grafana:
           uid: loki
           access: proxy
           url: http://loki:3100
+        # Bundled Alertmanager: Grafana Alerting shows firing Claude Code alerts + silences.
+        - name: Alertmanager
+          type: alertmanager
+          uid: alertmanager
+          access: proxy
+          url: http://alertmanager:9093
+          jsonData:
+            implementation: prometheus
+            handleGrafanaManagedAlerts: false
 
 # This section enables configuration for using External Secrets Operator (ESO) as the
 # secret manager: it renders a SecretStore plus ONE ExternalSecret that materializes the

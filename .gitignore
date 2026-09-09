@@ -18,3 +18,7 @@ local/demo/out/
 
 # Editor
 .vscode/
+
+# never commit notification secrets (Slack webhook etc.)
+local/secrets/*
+!local/secrets/README.md

@@ -1,6 +1,7 @@
 # Local Claude Code usage-audit stack (debug).
 # Claude Code --(OTLP :4317)--> otel-collector --> Prometheus (metrics) + Loki (events)
 #                                                          \--> Grafana (dashboards)
+#                                                 Prometheus --(alerts)--> Alertmanager (:9093)
 
 # Start:  docker compose up -d      Stop: docker compose down      Wipe: docker compose down -v
 name: claude-code-telemetry
@@ -29,6 +30,19 @@ services:
       - prometheus-data:/prometheus
     ports:
       - "9090:9090"
+    depends_on: [alertmanager]
+
+  alertmanager:
+    image: quay.io/prometheus/alertmanager:v0.33.0
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./secrets:/etc/alertmanager/secrets:ro   # slack-webhook lives here, git-ignored
+      - alertmanager-data:/alertmanager
+    ports:
+      - "9093:9093"   # Alertmanager UI: firing alerts, silences, routing tree
 
   loki:
     image: grafana/loki:3.6.7
@@ -56,5 +70,6 @@ services:
 
 volumes:
   prometheus-data:
+  alertmanager-data:
   loki-data:
   grafana-data:

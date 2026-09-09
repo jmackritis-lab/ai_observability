@@ -30,6 +30,7 @@ the source of truth you iterate on; `deploy-templates/` is the replication targe
 | Collector pipeline | `local/otel-collector.yaml`       | `deploy-templates/values.yaml` → `opentelemetry-collector.alternateConfig` |
 | Recording rules    | `local/prometheus-rules.yml`      | `deploy-templates/values.yaml` → `prometheus.serverFiles.recording_rules.yml` |
 | Alerting rules     | `local/prometheus-alerts.yml`     | `deploy-templates/values.yaml` → `prometheus.serverFiles.alerting_rules.yml` (minus the Loki-candidates comment block) |
+| Alert routing      | `local/alertmanager.yml`          | `deploy-templates/values.yaml` → `prometheus.alertmanager.config` (Slack webhook: `local/secrets/slack-webhook` ↔ Secret `alertmanager-slack`, never in git) |
 | Dashboards         | `local/grafana/dashboards/<scope>/*.json` | `deploy-templates/config/grafana/dashboards/<scope>/*.json`        |
 
 The two pipeline copies differ **only** in: `collector.env` value (`local-poc` vs `${env:COLLECTOR_ENV:-k8s}`),
@@ -42,7 +43,7 @@ the first move — validate in `local/` first, then port.
 ```bash
 # Local testbed
 cd local
-docker compose up -d                     # Grafana :3000 · Prometheus :9090 · Loki :3100 · OTLP :4317/:4318
+docker compose up -d                     # Grafana :3000 · Prometheus :9090 · Alertmanager :9093 · Loki :3100 · OTLP :4317/:4318
 docker compose logs -f otel-collector    # confirm data flows; discover exact attribute names
 docker compose down                      # stop        (down -v also wipes volumes)
 python demo/seed_demo_data.py            # seed 14 days of synthetic multi-user history (see local/demo/README.md)
@@ -68,6 +69,9 @@ diff <(yq '.prometheus.serverFiles["recording_rules.yml"] | ... comments=""' dep
 # alerting rules (must be identical, comments aside)
 diff <(yq '.prometheus.serverFiles["alerting_rules.yml"] | ... comments=""' deploy-templates/values.yaml) \
      <(yq '... comments=""' local/prometheus-alerts.yml)
+# alert routing (must be identical, comments aside)
+diff <(yq '.prometheus.alertmanager.config | ... comments=""' deploy-templates/values.yaml) \
+     <(yq '... comments=""' local/alertmanager.yml)
 ```
 
 Validate collector config and rules with the real binaries before `docker compose up`
@@ -80,6 +84,8 @@ docker run --rm -v "$PWD/local/prometheus-rules.yml:/rules.yml:ro" --entrypoint 
   prom/prometheus:v3.13.1 check rules /rules.yml
 docker run --rm -v "$PWD/local/prometheus-alerts.yml:/alerts.yml:ro" --entrypoint promtool \
   prom/prometheus:v3.13.1 check rules /alerts.yml
+docker run --rm -v "$PWD/local/alertmanager.yml:/am.yml:ro" --entrypoint amtool \
+  quay.io/prometheus/alertmanager:v0.33.0 check-config /am.yml
 ```
 
 To point Claude Code at the local stack: merge the `env` block from
@@ -113,7 +119,7 @@ To point Claude Code at the local stack: merge the `env` block from
   `claude_code.cost.usage` → `claude_code_cost_usage_USD_total`, etc.); dashboards query these names.
   `resource_to_telemetry_conversion` turns resource attributes into queryable Prometheus labels.
   Dashboards depend on both.
-- **Datasource UIDs (`prometheus`, `loki`) are hardcoded** to match across `local/grafana/provisioning`
+- **Datasource UIDs (`prometheus`, `loki`, `alertmanager`) are hardcoded** to match across `local/grafana/provisioning`
   and the Helm `grafana.datasources` — dashboard JSON references these UIDs, so don't rename them or
   dashboards break in one environment.
 - **Dashboards are organized by scope subdirectory → Grafana folder**: `claude-code/` (Claude Code
@@ -126,6 +132,6 @@ To point Claude Code at the local stack: merge the `env` block from
   (collector self-telemetry, job `otel-collector`) — with all cluster-discovery scrape jobs and
   cluster-monitoring extras (node-exporter, kube-state-metrics, alertmanager, pushgateway) disabled,
   and RBAC is namespace-scoped. Preserve this — do not add cluster-wide discovery or CRD/operator dependencies.
-- **Version alignment**: the collector image (contrib `0.156.0`), Prometheus, Loki, and Grafana
-  versions are intentionally kept close between `local/` and the Helm subcharts. When bumping one,
+- **Version alignment**: the collector image (contrib `0.156.0`), Prometheus, Alertmanager, Loki, and
+  Grafana versions are intentionally kept close between `local/` and the Helm subcharts. When bumping one,
   check the other side.

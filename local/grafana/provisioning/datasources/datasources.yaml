@@ -14,3 +14,14 @@ datasources:
     uid: loki
     access: proxy
     url: http://loki:3100
+
+  # External Alertmanager: Grafana Alerting -> Alertmanager shows the firing Claude Code alerts and
+  # lets you create silences from Grafana. Same uid in the Helm bundle.
+  - name: Alertmanager
+    type: alertmanager
+    uid: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    jsonData:
+      implementation: prometheus
+      handleGrafanaManagedAlerts: false

@@ -1,0 +1,87 @@
+# Alertmanager routing for the Claude Code alerts (local/prometheus-alerts.yml).
+#
+# Routing key is the `owner` label every rule carries: finops | governance | platform.
+# All three receivers post to Slack through an incoming webhook whose URL is read at notify time
+# from /etc/alertmanager/secrets/slack-webhook — never from this file or git:
+#   local : put the URL in local/secrets/slack-webhook (directory is git-ignored; compose mounts it)
+#   Helm  : kubectl -n claude-code-telemetry create secret generic alertmanager-slack \
+#             --from-file=slack-webhook=<path>   (mounted via prometheus.alertmanager.extraSecretMounts)
+# Until the file exists, Alertmanager still routes/groups/inhibits and shows alerts in its UI (:9093)
+# and Grafana; only the Slack delivery logs an error. For the demo every receiver uses the same
+# webhook (one test channel); split them per channel by pointing at different files.
+#
+# Kept in sync with deploy-templates/values.yaml -> prometheus.alertmanager.config
+global:
+  resolve_timeout: 5m
+  # slack_api_url: 'https://hooks.slack.com/services/XXX/YYY/ZZZ'
+
+route:
+  receiver: platform            # anything without an owner label lands with the stack owners
+  group_by: [alertname, owner, project]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 12h
+  routes:
+    # First match wins: informational alerts are visible in the UI / Grafana but never notify.
+    - matchers: [severity = info]
+      receiver: "null"
+    - matchers: [owner = finops]
+      receiver: finops
+      # spend spikes are daily signals; don't re-page every few hours
+      repeat_interval: 24h
+    - matchers: [owner = governance]
+      receiver: governance
+      repeat_interval: 24h
+    - matchers: [owner = platform]
+      receiver: platform
+      # pipeline problems: keep nagging until fixed
+      repeat_interval: 4h
+
+inhibit_rules:
+  # If the collector cannot be scraped, every other Claude Code alert is noise — suppress them.
+  - source_matchers: [alertname = ClaudeCodeCollectorScrapeDown]
+    target_matchers: [alertname =~ "ClaudeCode.*", alertname != "ClaudeCodeCollectorScrapeDown"]
+    equal: []
+  # No telemetry at all also implies spend/attribution alerts are meaningless.
+  - source_matchers: [alertname = ClaudeCodeNoTelemetryReceived]
+    target_matchers: [owner =~ "finops|governance"]
+    equal: []
+
+receivers:
+  - name: "null"        # intentional blackhole for severity=info
+
+  - name: finops
+    slack_configs:
+      - api_url_file: /etc/alertmanager/secrets/slack-webhook
+        channel: "#claude-code-alerts"      # informational: an incoming webhook is bound to its channel
+        send_resolved: true
+        title: '{{ .CommonLabels.alertname }} — {{ .CommonAnnotations.summary }}'
+        text: |-
+          {{ range .Alerts }}*{{ .Labels.severity | toUpper }}* {{ .Annotations.description }}
+          {{ if .Annotations.runbook }}_Runbook:_ {{ .Annotations.runbook }}{{ end }}
+          {{ end }}
+        title_link: 'http://localhost:3000/d/claude-code-attribution'
+
+  - name: governance
+    slack_configs:
+      - api_url_file: /etc/alertmanager/secrets/slack-webhook
+        channel: "#claude-code-alerts"      # informational: an incoming webhook is bound to its channel
+        send_resolved: true
+        title: '{{ .CommonLabels.alertname }} — {{ .CommonAnnotations.summary }}'
+        text: |-
+          {{ range .Alerts }}*{{ .Labels.severity | toUpper }}* {{ .Annotations.description }}
+          {{ if .Annotations.runbook }}_Runbook:_ {{ .Annotations.runbook }}{{ end }}
+          {{ end }}
+        title_link: 'http://localhost:3000/d/claude-code-attribution'
+
+  - name: platform
+    slack_configs:
+      - api_url_file: /etc/alertmanager/secrets/slack-webhook
+        channel: "#claude-code-alerts"      # informational: an incoming webhook is bound to its channel
+        send_resolved: true
+        title: '{{ .CommonLabels.alertname }} — {{ .CommonAnnotations.summary }}'
+        text: |-
+          {{ range .Alerts }}*{{ .Labels.severity | toUpper }}* {{ .Annotations.description }}
+          {{ if .Annotations.runbook }}_Runbook:_ {{ .Annotations.runbook }}{{ end }}
+          {{ end }}
+        title_link: 'http://localhost:3000/d/claude-code-attribution'

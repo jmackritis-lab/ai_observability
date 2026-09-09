@@ -242,10 +242,17 @@ turns the same counters into a handful of detective controls, grouped by owner:
 | platform   | `ClaudeCodeCollectorExportFailures`  | collector `send_failed_*` counters increasing                          |
 | platform   | `ClaudeCodeNoTelemetryReceived`      | no sessions for 8h during weekday working hours                        |
 
-Event-only signals (bypassPermissions escalations, API refusals, retries exhausted, auth failures,
-sandbox-disabled Bash) are LogQL expressions documented at the bottom of the same file; they need
-the Loki ruler, which the bundle does not yet enable. No Alertmanager is bundled either — alerts are
-visible on Prometheus `/alerts` and in Grafana's alert list until a receiver is configured.
+Alerts are routed by **Alertmanager** (`local/alertmanager.yml`, mirrored into the Helm
+`prometheus.alertmanager.config`) on the `owner` label: finops and governance alerts repeat daily,
+platform alerts every 4h, `severity=info` never notifies, and a collector outage inhibits everything
+else. All receivers post to Slack through an incoming webhook whose URL is read at notify time from
+`/etc/alertmanager/secrets/slack-webhook` — locally a git-ignored file under `local/secrets/`
+(see its README), on Kubernetes the `alertmanager-slack` Secret mounted by the chart. Without the
+file the routing tree, inhibition and the Alertmanager UI (`:9093`, also surfaced in Grafana
+Alerting via the `alertmanager` datasource) still work; only delivery logs an error. Event-only signals
+(bypassPermissions escalations, API refusals, retries exhausted, auth failures, sandbox-disabled
+Bash) are LogQL expressions documented at the bottom of the alerts file; they need the Loki ruler,
+which the bundle does not yet enable.
 
 Dashboards that consume these signals: *Executive Summary* and *Epic Scorecard* (spend),
 *Attribution Health* (coverage / invalid), *My Usage* (per-engineer transparency), *Collector Health*
