@@ -114,6 +114,10 @@ To point Claude Code at the local stack: merge the `env` block from
 - **Attribution is injected via `OTEL_RESOURCE_ATTRIBUTES`** (comma-separated `key=value`), read
   once at `claude` startup and static for the whole session — hence "one Jira ticket ≈ one session".
   User identity (`user.email`, `user.id`, `organization.id`) is native and needs no injection.
+  A settings-file `env` entry (this repo's `.claude/settings.json` sets project + epic) **replaces**
+  the shell variable rather than merging with it, so the story must live in the git-ignored
+  `.claude/settings.local.json` with all three keys; the launcher only helps repos without
+  committed settings. Verified 2026-09-09 with headless sessions.
 - **Prometheus exporter settings matter**: Claude Code's metrics are OTel **counters**, so their
   Prometheus names carry the unit + `_total` suffix
   (`claude_code.token.usage` → `claude_code_token_usage_tokens_total`,

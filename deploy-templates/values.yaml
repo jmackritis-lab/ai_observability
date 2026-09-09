@@ -468,7 +468,8 @@ prometheus:
                 )
                 / sum(increase(claude_code_cost_usage_USD_total[1d])) > 0.10
                 and sum(increase(claude_code_cost_usage_USD_total[1d])) > 10
-              for: 1h
+              # The ratio is already smoothed over 24h, so the hold only guards against flapping.
+              for: 10m
               labels: {severity: warning, owner: governance}
               annotations:
                 summary: "Claude Code attribution coverage below 90%"

@@ -151,11 +151,21 @@ one Jira ticket ≈ one session — the attributes are read once at startup and 
 > `OTEL_RESOURCE_ATTRIBUTES` value rules: comma-separated `key=value`, US-ASCII, no
 > spaces/quotes/commas/semicolons/backslashes in values (percent-encode).
 
-**Launcher wrapper (implemented):** `client/claude-attr.sh` / `client/claude-attr.ps1` derive
-`project` from the `origin` remote, `jira.story` from the branch name, and `jira.epic` from
-`git config claude.jiraEpic` (set once per repo), then `exec claude`. Env overrides:
-`CLAUDE_PROJECT`, `CLAUDE_JIRA_STORY`, `CLAUDE_JIRA_EPIC`. Resolving the epic from Jira
-automatically remains a later phase.
+**Two injection channels, and their precedence (verified 2026-09-09):**
+
+1. **Project settings** — `.claude/settings.json` committed in the repo with
+   `"env": {"OTEL_RESOURCE_ATTRIBUTES": "project=<repo>,jira.epic=<EPIC>"}`. Every session opened
+   in that repo (terminal *or* VS Code extension) is attributed without any launcher. The story
+   goes in the git-ignored `.claude/settings.local.json`, **repeating all three keys**, because a
+   settings `env` entry *replaces* the shell variable — it does not merge with it.
+2. **Launcher wrapper** — `client/claude-attr.sh` / `.ps1` derive `project` from the `origin`
+   remote, `jira.story` from the branch name and `jira.epic` from `git config claude.jiraEpic`,
+   then `exec claude`. Use it for repos that have **no** committed `OTEL_RESOURCE_ATTRIBUTES`; where
+   project settings define the variable, the launcher's value is overwritten and the story from the
+   branch is lost.
+
+Env overrides for the launcher: `CLAUDE_PROJECT`, `CLAUDE_JIRA_STORY`, `CLAUDE_JIRA_EPIC`.
+Resolving the epic from Jira automatically remains a later phase.
 
 ### 3.4 User identity — native, no injection needed
 
@@ -187,8 +197,9 @@ uid); then add `user.ldap=<uid>` to `OTEL_RESOURCE_ATTRIBUTES` alongside the oth
 
 Claude Code **cannot** refuse to start without a given attribute. Enforcement is layered:
 
-1. **Launcher wrapper** (`client/claude-attr.*`) — always populates every key (sentinel `none`
-   when a dimension does not apply). Ensures *presence* on cooperating clients.
+1. **Client side** — committed `.claude/settings.json` per repo (project + epic) plus the
+   launcher `client/claude-attr.*` for repos without one. Ensures *presence* on cooperating
+   clients; settings `env` beats the shell, see §3.3.
 2. **OTel Collector — the authoritative enforcement point** (server-side, users cannot bypass).
    Implemented as the `transform/attribution` processor, identical for metrics and logs:
    - missing/empty `project`, `jira.epic`, `jira.story` → sentinel **`unattributed`** (distinct
@@ -235,7 +246,7 @@ turns the same counters into a handful of detective controls, grouped by owner:
 | finops     | `ClaudeCodeUserSpendSpike`           | user's 24h spend > $25 **and** > 3× their trailing 7-day daily average |
 | finops     | `ClaudeCodeProjectSpendSpike`        | project's 24h spend > $100 **and** > 2.5× its trailing daily average   |
 | finops     | `ClaudeCodeCacheHitRatioLow`         | cache-read share < 50% over 24h on a project spending > $50            |
-| governance | `ClaudeCodeAttributionCoverageLow`   | > 10% of 24h spend stamped `unattributed`                              |
+| governance | `ClaudeCodeAttributionCoverageLow`   | > 10% of 24h spend stamped `unattributed`, held 10m                    |
 | governance | `ClaudeCodeInvalidJiraKeys`          | any session in 24h stamped `invalid` (per user)                        |
 | platform   | `ClaudeCodeUnsupportedClientVersion` | sessions from a `service_version` outside the allowed regex            |
 | platform   | `ClaudeCodeCollectorScrapeDown`      | `up{job="claude-code"} == 0` for 5m                                    |

@@ -1,0 +1,7 @@
+{
+  "//": "Project-level Claude Code settings (committed). Every session opened in this repo - terminal or VS Code - carries these OTEL resource attributes, so its spend lands on the right project/epic in the dashboards.",
+  "//precedence": "Verified: an `env` entry here REPLACES the shell's OTEL_RESOURCE_ATTRIBUTES (no merge), so client/claude-attr cannot add a story on top of it. Put the story in .claude/settings.local.json (git-ignored, wins over this file) repeating all three keys: \"OTEL_RESOURCE_ATTRIBUTES\": \"project=claude-code-telemetry,jira.epic=EPMDEDP-17184,jira.story=EPMDEDP-17201\". A missing story is stamped `unattributed` by the collector; use `none` for work with no ticket.",
+  "env": {
+    "OTEL_RESOURCE_ATTRIBUTES": "project=claude-code-telemetry,jira.epic=EPMDEDP-17184"
+  }
+}

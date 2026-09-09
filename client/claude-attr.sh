@@ -8,6 +8,8 @@
 #
 # Overrides (env): CLAUDE_PROJECT, CLAUDE_JIRA_STORY, CLAUDE_JIRA_EPIC.
 # Anything already in OTEL_RESOURCE_ATTRIBUTES is preserved; derived keys are appended.
+# NOTE: a repo whose .claude/settings.json sets OTEL_RESOURCE_ATTRIBUTES overrides this wrapper
+# entirely (settings env replaces the shell variable) - use .claude/settings.local.json there.
 # Values must be US-ASCII with no spaces/quotes/commas/semicolons/backslashes — the collector
 # lower-cases `project`, upper-cases Jira keys, and stamps `invalid` on anything malformed.
 set -euo pipefail
