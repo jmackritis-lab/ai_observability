@@ -1,0 +1,27 @@
+{
+  "//": "Enterprise managed settings — pushed by MDM/GPO, cannot be overridden by user or project settings.json.",
+  "//paths": "Windows: C:/Program Files/ClaudeCode/managed-settings.json | macOS: /Library/Application Support/ClaudeCode/managed-settings.json | Linux/WSL: /etc/claude-code/managed-settings.json",
+  "//endpoint": "Replace OTEL_EXPORTER_OTLP_ENDPOINT with the team collector (see deploy-templates ingress.grpc / ingress.http). For the HTTP ingress use OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf and port 4318.",
+  "//auth": "When the collector requires a bearer token, either set OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer%20<token> here, or point otelHeadersHelper at a script that prints {\"Authorization\":\"Bearer <token>\"} (re-run every ~29 min).",
+  "//privacy": "Prompts, assistant responses, tool content and raw API bodies stay OFF. TOOL_DETAILS=1 un-redacts tool/skill/agent/MCP names, bash commands and file paths.",
+  "env": {
+    "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+    "OTEL_METRICS_EXPORTER": "otlp",
+    "OTEL_LOGS_EXPORTER": "otlp",
+    "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc",
+    "OTEL_EXPORTER_OTLP_ENDPOINT": "https://otel.example.com:443",
+    "OTEL_METRIC_EXPORT_INTERVAL": "60000",
+    "OTEL_LOGS_EXPORT_INTERVAL": "5000",
+
+    "OTEL_LOG_TOOL_DETAILS": "1",
+
+    "OTEL_LOG_USER_PROMPTS": "0",
+    "OTEL_LOG_ASSISTANT_RESPONSES": "0",
+    "OTEL_LOG_TOOL_CONTENT": "0",
+    "OTEL_LOG_RAW_API_BODIES": "0",
+
+    "OTEL_METRICS_INCLUDE_SESSION_ID": "true",
+    "OTEL_METRICS_INCLUDE_ACCOUNT_UUID": "true",
+    "OTEL_METRICS_INCLUDE_VERSION": "true"
+  }
+}
