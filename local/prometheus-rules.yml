@@ -1,0 +1,54 @@
+# Recording rules — the cardinality-safe layer for long-range dashboards (docs/analytics.md §3.2).
+#
+# Raw claude_code_* series carry session_id (one series per session) which is fine for 30d
+# local retention but expensive to scan over months. These rules pre-aggregate the raw counters
+# into session-free series keyed only on the bounded business dimensions. Dashboards that
+# need >7d ranges should query these instead of the raw counters.
+#
+# Naming follows the Prometheus convention  level:metric:operation.
+# Kept in sync with deploy-templates/values.yaml -> prometheus.serverFiles.recording_rules.yml
+groups:
+  - name: claude_code.attribution
+    interval: 1m
+    rules:
+      # USD/s by business dimension (multiply by a window to get spend; sum_over_time for totals).
+      - record: claude_code:cost_usd:rate5m
+        expr: >
+          sum by (collector_env, organization_id, user_email, project, jira_epic, model)
+            (rate(claude_code_cost_usage_USD_total[5m]))
+
+      # tokens/s by business dimension and token type (input/output/cacheRead/cacheCreation).
+      - record: claude_code:tokens:rate5m
+        expr: >
+          sum by (collector_env, organization_id, user_email, project, jira_epic, model, type)
+            (rate(claude_code_token_usage_tokens_total[5m]))
+
+      # active seconds/s by business dimension and type (user vs cli).
+      - record: claude_code:active_time_seconds:rate5m
+        expr: >
+          sum by (collector_env, organization_id, user_email, project, jira_epic, type)
+            (rate(claude_code_active_time_seconds_total[5m]))
+
+      # Hourly spend per project/epic — the series the FinOps "cost by epic" views should trend.
+      - record: claude_code:cost_usd:increase1h
+        expr: >
+          sum by (collector_env, organization_id, project, jira_epic)
+            (increase(claude_code_cost_usage_USD_total[1h]))
+
+  - name: claude_code.governance
+    interval: 1m
+    rules:
+      # Share of spend that arrived without a project tag (collector stamps `unattributed`).
+      # Target: trend to 0 as the launcher/managed settings roll out.
+      - record: claude_code:cost_usd_unattributed:ratio_rate5m
+        expr: >
+          sum(rate(claude_code_cost_usage_USD_total{project="unattributed"}[5m]))
+          /
+          sum(rate(claude_code_cost_usage_USD_total[5m]))
+
+      # Share of spend carrying a malformed Jira key (collector stamps `invalid`).
+      - record: claude_code:cost_usd_invalid_jira:ratio_rate5m
+        expr: >
+          sum(rate(claude_code_cost_usage_USD_total{jira_epic="invalid"}[5m]) or rate(claude_code_cost_usage_USD_total{jira_story="invalid"}[5m]))
+          /
+          sum(rate(claude_code_cost_usage_USD_total[5m]))

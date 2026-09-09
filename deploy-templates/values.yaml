@@ -111,6 +111,31 @@ opentelemetry-collector:
             value: ${env:COLLECTOR_ENV:-k8s}
             action: upsert
 
+      # Attribution enforcement (docs/analytics.md §4) — the server-side, user-unbypassable point.
+      # 1) Missing business dimensions get the sentinel `unattributed` so the share of un-tagged
+      #    spend is queryable (project="unattributed") instead of silently vanishing into an empty label.
+      #    (`none` remains the *user-set* sentinel for "does not apply" — see §3.3 — so the two are distinguishable.)
+      # 2) Jira keys are normalized to upper case and validated against ^[A-Z][A-Z0-9]*-[0-9]+$;
+      #    anything else becomes `invalid` so a typo can't mint a bogus epic/story label.
+      # 3) `project` is lower-cased and restricted to [a-z0-9._-] (a repository name).
+      # Identical statements for metrics and logs so Prometheus labels and Loki labels agree.
+      # NOTE: session.id / jira.story are deliberately NOT stripped here — see docs/analytics.md §3.2.
+      transform/attribution:
+        error_mode: ignore
+        metric_statements: &attribution_statements
+          - context: resource
+            statements:
+              - set(attributes["project"], "unattributed") where attributes["project"] == nil or attributes["project"] == ""
+              - set(attributes["jira.epic"], "unattributed") where attributes["jira.epic"] == nil or attributes["jira.epic"] == ""
+              - set(attributes["jira.story"], "unattributed") where attributes["jira.story"] == nil or attributes["jira.story"] == ""
+              - set(attributes["project"], ConvertCase(attributes["project"], "lower"))
+              - set(attributes["project"], "invalid") where not IsMatch(attributes["project"], "^[a-z0-9._-]+$")
+              - set(attributes["jira.epic"], ConvertCase(attributes["jira.epic"], "upper")) where IsMatch(attributes["jira.epic"], "^[A-Za-z][A-Za-z0-9]*-[0-9]+$")
+              - set(attributes["jira.epic"], "invalid") where not IsMatch(attributes["jira.epic"], "^([A-Z][A-Z0-9]*-[0-9]+|none|unattributed)$")
+              - set(attributes["jira.story"], ConvertCase(attributes["jira.story"], "upper")) where IsMatch(attributes["jira.story"], "^[A-Za-z][A-Za-z0-9]*-[0-9]+$")
+              - set(attributes["jira.story"], "invalid") where not IsMatch(attributes["jira.story"], "^([A-Z][A-Z0-9]*-[0-9]+|none|unattributed)$")
+        log_statements: *attribution_statements
+
     exporters:
       # Metrics -> Prometheus scrape endpoint on :8889.
       # Claude Code metrics are OTel counters, so Prometheus names carry the unit + `_total` suffix
@@ -139,11 +164,11 @@ opentelemetry-collector:
       pipelines:
         metrics:
           receivers: [otlp]
-          processors: [resource, batch]
+          processors: [resource, transform/attribution, batch]
           exporters: [prometheus, debug]
         logs:
           receivers: [otlp]
-          processors: [resource, batch]
+          processors: [resource, transform/attribution, batch]
           exporters: [otlphttp/loki, debug]
       telemetry:
         logs:
@@ -281,6 +306,55 @@ prometheus:
       static_configs:
         - targets:
             - otel-collector:8888
+  # Recording rules — session-free, low-cardinality series for long-range dashboards.
+  # Source of truth: local/prometheus-rules.yml (keep byte-identical apart from indentation).
+  serverFiles:
+    recording_rules.yml:
+      groups:
+        - name: claude_code.attribution
+          interval: 1m
+          rules:
+            # USD/s by business dimension (multiply by a window to get spend; sum_over_time for totals).
+            - record: claude_code:cost_usd:rate5m
+              expr: >
+                sum by (collector_env, organization_id, user_email, project, jira_epic, model)
+                  (rate(claude_code_cost_usage_USD_total[5m]))
+
+            # tokens/s by business dimension and token type (input/output/cacheRead/cacheCreation).
+            - record: claude_code:tokens:rate5m
+              expr: >
+                sum by (collector_env, organization_id, user_email, project, jira_epic, model, type)
+                  (rate(claude_code_token_usage_tokens_total[5m]))
+
+            # active seconds/s by business dimension and type (user vs cli).
+            - record: claude_code:active_time_seconds:rate5m
+              expr: >
+                sum by (collector_env, organization_id, user_email, project, jira_epic, type)
+                  (rate(claude_code_active_time_seconds_total[5m]))
+
+            # Hourly spend per project/epic — the series the FinOps "cost by epic" views should trend.
+            - record: claude_code:cost_usd:increase1h
+              expr: >
+                sum by (collector_env, organization_id, project, jira_epic)
+                  (increase(claude_code_cost_usage_USD_total[1h]))
+
+        - name: claude_code.governance
+          interval: 1m
+          rules:
+            # Share of spend that arrived without a project tag (collector stamps `unattributed`).
+            # Target: trend to 0 as the launcher/managed settings roll out.
+            - record: claude_code:cost_usd_unattributed:ratio_rate5m
+              expr: >
+                sum(rate(claude_code_cost_usage_USD_total{project="unattributed"}[5m]))
+                /
+                sum(rate(claude_code_cost_usage_USD_total[5m]))
+
+            # Share of spend carrying a malformed Jira key (collector stamps `invalid`).
+            - record: claude_code:cost_usd_invalid_jira:ratio_rate5m
+              expr: >
+                sum(rate(claude_code_cost_usage_USD_total{jira_epic="invalid"}[5m]) or rate(claude_code_cost_usage_USD_total{jira_story="invalid"}[5m]))
+                /
+                sum(rate(claude_code_cost_usage_USD_total[5m]))
 
 # Visualization (grafana/grafana subchart).
 grafana:

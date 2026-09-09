@@ -2,6 +2,10 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+# Pre-aggregated, session-free series for long-range dashboards (see file header).
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
 scrape_configs:
   # Claude Code metrics, re-exported by the collector.
   - job_name: claude-code

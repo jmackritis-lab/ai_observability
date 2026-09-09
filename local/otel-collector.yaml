@@ -27,6 +27,31 @@ processors:
         value: local-poc
         action: upsert
 
+  # Attribution enforcement (docs/analytics.md §4) — the server-side, user-unbypassable point.
+  # 1) Missing business dimensions get the sentinel `unattributed` so the share of un-tagged
+  #    spend is queryable (project="unattributed") instead of silently vanishing into an empty label.
+  #    (`none` remains the *user-set* sentinel for "does not apply" — see §3.3 — so the two are distinguishable.)
+  # 2) Jira keys are normalized to upper case and validated against ^[A-Z][A-Z0-9]*-[0-9]+$;
+  #    anything else becomes `invalid` so a typo can't mint a bogus epic/story label.
+  # 3) `project` is lower-cased and restricted to [a-z0-9._-] (a repository name).
+  # Identical statements for metrics and logs so Prometheus labels and Loki labels agree.
+  # NOTE: session.id / jira.story are deliberately NOT stripped here — see docs/analytics.md §3.2.
+  transform/attribution:
+    error_mode: ignore
+    metric_statements: &attribution_statements
+      - context: resource
+        statements:
+          - set(attributes["project"], "unattributed") where attributes["project"] == nil or attributes["project"] == ""
+          - set(attributes["jira.epic"], "unattributed") where attributes["jira.epic"] == nil or attributes["jira.epic"] == ""
+          - set(attributes["jira.story"], "unattributed") where attributes["jira.story"] == nil or attributes["jira.story"] == ""
+          - set(attributes["project"], ConvertCase(attributes["project"], "lower"))
+          - set(attributes["project"], "invalid") where not IsMatch(attributes["project"], "^[a-z0-9._-]+$")
+          - set(attributes["jira.epic"], ConvertCase(attributes["jira.epic"], "upper")) where IsMatch(attributes["jira.epic"], "^[A-Za-z][A-Za-z0-9]*-[0-9]+$")
+          - set(attributes["jira.epic"], "invalid") where not IsMatch(attributes["jira.epic"], "^([A-Z][A-Z0-9]*-[0-9]+|none|unattributed)$")
+          - set(attributes["jira.story"], ConvertCase(attributes["jira.story"], "upper")) where IsMatch(attributes["jira.story"], "^[A-Za-z][A-Za-z0-9]*-[0-9]+$")
+          - set(attributes["jira.story"], "invalid") where not IsMatch(attributes["jira.story"], "^([A-Z][A-Z0-9]*-[0-9]+|none|unattributed)$")
+    log_statements: *attribution_statements
+
 exporters:
   # Metrics -> Prometheus scrape endpoint on :8889.
   # Claude Code metrics are OTel counters, so Prometheus names carry the unit + `_total` suffix
@@ -55,11 +80,11 @@ service:
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [resource, batch]
+      processors: [resource, transform/attribution, batch]
       exporters: [prometheus, debug]
     logs:
       receivers: [otlp]
-      processors: [resource, batch]
+      processors: [resource, transform/attribution, batch]
       exporters: [otlphttp/loki, debug]
   telemetry:
     logs:

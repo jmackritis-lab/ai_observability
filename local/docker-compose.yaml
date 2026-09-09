@@ -24,6 +24,7 @@ services:
       - --web.enable-lifecycle
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus-rules.yml:/etc/prometheus/rules/claude-code.yml:ro
       - prometheus-data:/prometheus
     ports:
       - "9090:9090"
