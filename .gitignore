@@ -12,3 +12,9 @@ deploy-templates/Chart.lock
 
 # Tools
 bin/
+
+# generated demo-seed artifacts
+local/demo/out/
+
+# Editor
+.vscode/
