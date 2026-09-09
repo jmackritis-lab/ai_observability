@@ -19,6 +19,10 @@ are **derived from those events**, so Loki and Prometheus agree per session.
 
 ## Run
 
+Demo morning shortcut (wipe + restart + seed + optional Slack test):
+`.\local\demo\reset_and_seed.ps1 -SlackTest` or `./local/demo/reset_and_seed.sh --slack-test`.
+Re-seeding on top of existing data would double-count, hence the wipe.
+
 ```bash
 cd local && docker compose up -d          # stack must be running
 python demo/seed_demo_data.py             # ~2 min; restarts Prometheus twice

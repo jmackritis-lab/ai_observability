@@ -18,7 +18,7 @@ The goal is attributing token/cost usage to business dimensions (`project`, `jir
 bodies. `spec/` is the DRY vocabulary of the full Claude Code OTEL surface (every config var, metric,
 event, span, attribute; upstream links + snapshot date). `docs/analytics.md` is the design doc
 (attribution, cardinality, governance, rollout) over the subset this stack uses — read it before
-changing the pipeline.
+changing the pipeline. `docs/demo.md` is the demo runbook (prep, preflight, four-screen flow, recovery).
 
 ## The one rule that governs everything
 
@@ -47,6 +47,7 @@ docker compose up -d                     # Grafana :3000 · Prometheus :9090 · 
 docker compose logs -f otel-collector    # confirm data flows; discover exact attribute names
 docker compose down                      # stop        (down -v also wipes volumes)
 python demo/seed_demo_data.py            # seed 14 days of synthetic multi-user history (see local/demo/README.md)
+./demo/reset_and_seed.sh                 # demo morning: down -v, up -d, reseed (+ --slack-test); .ps1 twin for PowerShell
 
 # Helm bundle — always validate before proposing a release
 helm dependency update deploy-templates  # pull subchart .tgz into deploy-templates/charts/

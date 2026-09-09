@@ -1,7 +1,7 @@
-<#
+﻿<#
 .SYNOPSIS
   Launch `claude` with OTEL_RESOURCE_ATTRIBUTES derived from the current git checkout.
-  PowerShell twin of claude-attr.sh — see that file's header for the derivation rules.
+  PowerShell twin of claude-attr.sh - see that file's header for the derivation rules.
 
   Overrides (env): CLAUDE_PROJECT, CLAUDE_JIRA_STORY, CLAUDE_JIRA_EPIC.
   Tip: put this on PATH and `Set-Alias claude-attr claude-attr.ps1`, or set

@@ -79,4 +79,5 @@ config) and `claude-attr.sh` / `claude-attr.ps1` (launcher that derives `project
 attribution from the git checkout).
 
 See [`docs/analytics.md`](docs/analytics.md) for the attribution model, cardinality guidance, and
-rollout plan, and [`spec/`](spec/) for the full Claude Code OTEL vocabulary.
+rollout plan, [`docs/demo.md`](docs/demo.md) for the demo runbook, and [`spec/`](spec/) for the full
+Claude Code OTEL vocabulary.

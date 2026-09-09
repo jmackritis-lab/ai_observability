@@ -654,6 +654,9 @@ grafana:
     tls: []
     # - secretName: grafana-tls
     #   hosts: [grafana.example.com]
+  # Home dashboard = Executive Summary. The sidecar writes files under /tmp/dashboards/<folder>/.
+  env:
+    GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /tmp/dashboards/Executive/claude-code-executive.json
   sidecar:
     dashboards:
       enabled: true
